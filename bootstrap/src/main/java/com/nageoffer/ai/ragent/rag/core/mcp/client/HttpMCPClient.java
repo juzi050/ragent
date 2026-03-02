@@ -265,7 +265,6 @@ public class HttpMCPClient implements MCPClient {
 
         return MCPTool.builder()
                 .toolId(name)
-                .name(name)
                 .description(description)
                 .parameters(parameters)
                 .mcpServerUrl(serverUrl)

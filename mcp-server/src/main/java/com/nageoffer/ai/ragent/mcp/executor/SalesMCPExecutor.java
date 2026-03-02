@@ -106,10 +106,7 @@ public class SalesMCPExecutor implements MCPToolExecutor {
 
         return MCPToolDefinition.builder()
                 .toolId("sales_query")
-                .name("sales_query")
                 .description("查询软件销售数据，支持按地区、时间、产品、销售人员等维度筛选，支持汇总统计、排名、明细列表等多种查询")
-                .examples(List.of("华东区这个月销售额多少？", "张三这个月业绩怎么样？", "哪个地区销售最好？",
-                        "本月销售排名前五是谁？", "企业版这个月卖了多少？", "上个月各产品销售情况"))
                 .parameters(parameters)
                 .requireUserId(true)
                 .build();

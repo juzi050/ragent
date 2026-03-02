@@ -43,10 +43,7 @@ import java.util.Map;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
 
 /**
- * 基于 LLM 的 MCP 参数提取器实现（V3 Enterprise 专用）
- * <p>
- * 使用大模型从用户问题中智能提取工具调用所需的参数。
- * 适合处理复杂的自然语言参数提取场景。
+ * 基于 LLM 的 MCP 参数提取器实现
  */
 @Slf4j
 @Service
@@ -120,7 +117,6 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
      */
     private String buildToolDefinition(MCPTool tool) {
         StringBuilder sb = new StringBuilder();
-        sb.append("工具名称: ").append(tool.getName()).append("\n");
         sb.append("工具ID: ").append(tool.getToolId()).append("\n");
         sb.append("功能描述: ").append(tool.getDescription()).append("\n");
         sb.append("参数列表:\n");

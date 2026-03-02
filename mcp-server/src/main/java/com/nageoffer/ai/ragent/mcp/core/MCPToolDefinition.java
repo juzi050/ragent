@@ -40,19 +40,10 @@ public class MCPToolDefinition {
     private String toolId;
 
     /**
-     * 工具名称
-     */
-    private String name;
-
-    /**
      * 工具的详细描述
+     * 用于参数提取阶段，LLM 根据此描述理解工具能力并提取参数
      */
     private String description;
-
-    /**
-     * 工具使用示例列表
-     */
-    private List<String> examples;
 
     /**
      * 工具参数定义映射，key为参数名，value为参数定义

@@ -55,7 +55,7 @@ public class DefaultMCPToolRegistry implements MCPToolRegistry {
     public void register(MCPToolExecutor executor) {
         String toolId = executor.getToolId();
         executorMap.put(toolId, executor);
-        log.info("MCP 工具注册成功, toolId: {}, 工具名称: {}", toolId, executor.getToolDefinition().getName());
+        log.info("MCP 工具注册成功, toolId: {}", toolId);
     }
 
     @Override

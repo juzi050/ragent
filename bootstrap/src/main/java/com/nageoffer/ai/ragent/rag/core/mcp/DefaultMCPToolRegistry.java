@@ -83,7 +83,7 @@ public class DefaultMCPToolRegistry implements MCPToolRegistry {
         if (existing != null) {
             log.warn("工具 {} 已存在，已覆盖", toolId);
         } else {
-            log.info("MCP 工具注册成功, toolId: {}, 工具名称: {}", toolId, executor.getToolDefinition().getName());
+            log.info("MCP 工具注册成功, toolId: {}", toolId);
         }
     }
 

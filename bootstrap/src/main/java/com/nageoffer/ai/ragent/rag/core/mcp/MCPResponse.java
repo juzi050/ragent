@@ -27,8 +27,6 @@ import java.util.Map;
 
 /**
  * MCP 调用响应
- * <p>
- * 封装 MCP 工具调用的返回结果
  */
 @Data
 @Builder

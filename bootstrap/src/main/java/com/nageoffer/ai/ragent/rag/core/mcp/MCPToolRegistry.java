@@ -22,8 +22,6 @@ import java.util.Optional;
 
 /**
  * MCP 工具注册表接口
- * <p>
- * 管理所有已注册的 MCP 工具，提供工具查找和列表功能
  */
 public interface MCPToolRegistry {
 

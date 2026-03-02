@@ -27,8 +27,6 @@ import java.util.Map;
 
 /**
  * MCP 调用请求
- * <p>
- * 封装对 MCP 工具的调用参数
  */
 @Data
 @Builder

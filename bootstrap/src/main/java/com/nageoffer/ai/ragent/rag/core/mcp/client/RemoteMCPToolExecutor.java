@@ -60,6 +60,7 @@ public class RemoteMCPToolExecutor implements MCPToolExecutor {
             long costMs = System.currentTimeMillis() - start;
             String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             log.warn("远程 MCP 工具调用异常, toolId={}, reason={}", request.getToolId(), reason);
+
             MCPResponse response = MCPResponse.error(request.getToolId(), "REMOTE_CALL_ERROR", reason);
             response.setCostMs(costMs);
             return response;

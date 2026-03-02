@@ -19,9 +19,6 @@ package com.nageoffer.ai.ragent.rag.core.mcp;
 
 /**
  * MCP 工具执行器接口
- * <p>
- * 每个具体工具需要实现此接口，定义工具的执行逻辑
- * 类似于 Function Calling 中的具体函数实现
  */
 public interface MCPToolExecutor {
 

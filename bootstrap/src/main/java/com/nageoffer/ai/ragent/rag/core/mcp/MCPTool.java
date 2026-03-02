@@ -30,6 +30,11 @@ import java.util.Map;
  * <p>
  * 描述一个可被调用的外部工具/API，包含工具元信息和参数定义
  * 类似于 Function Calling 中的 function definition
+ * <p>
+ * 注意：
+ * - name 和 examples 字段已移除，这些信息由意图树表（IntentNodeDO）管理
+ * - 意图树负责意图识别阶段的匹配，MCPTool 负责参数提取和执行阶段
+ * - 一个 MCPTool 可以对应多个意图节点，实现业务视角和技术视角的分离
  */
 @Data
 @Builder
@@ -38,28 +43,19 @@ import java.util.Map;
 public class MCPTool {
 
     /**
-     * 工具唯一标识
+     * 工具唯一标识（标准 MCP 字段）
      * 例如：attendance_query、approval_list、leave_balance
      */
     private String toolId;
 
     /**
-     * 工具名称（用于展示）
-     */
-    private String name;
-
-    /**
-     * 工具描述（用于 LLM 理解工具用途）
+     * 工具描述（标准 MCP 字段）
+     * 用于参数提取阶段，LLM 根据此描述理解工具能力并提取参数
      */
     private String description;
 
     /**
-     * 示例问题（帮助意图识别匹配）
-     */
-    private List<String> examples;
-
-    /**
-     * 参数定义
+     * 参数定义（标准 MCP 字段）
      * key: 参数名, value: 参数描述
      */
     private Map<String, ParameterDef> parameters;
