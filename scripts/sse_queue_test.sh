@@ -15,7 +15,7 @@ DIM='\033[2m'
 RESET='\033[0m'
 
 # ==================== 配置参数 ====================
-BASE_URL="${BASE_URL:-http://localhost:8080/api/ragent}"
+BASE_URL="${BASE_URL:-http://localhost:9090/api/ragent}"
 QUESTION="${QUESTION:-你是谁？你是ChatGPT么？}"
 CONCURRENCY="${CONCURRENCY:-3}"
 TOKEN="${TOKEN:-214630a9cef34765a6df2076aa0c4610}"
