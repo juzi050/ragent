@@ -114,7 +114,7 @@ public class SampleQuestionServiceImpl implements SampleQuestionService {
         List<SampleQuestionDO> records = sampleQuestionMapper.selectList(
                 Wrappers.lambdaQuery(SampleQuestionDO.class)
                         .eq(SampleQuestionDO::getDeleted, 0)
-                        .last("ORDER BY RANDOM() LIMIT " + DEFAULT_LIMIT)
+                        .last("ORDER BY RAND() LIMIT " + DEFAULT_LIMIT)
         );
         if (records == null || records.isEmpty()) {
             return List.of();
