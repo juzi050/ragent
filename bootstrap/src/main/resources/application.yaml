@@ -6,6 +6,9 @@ server:
 spring:
   application:
     name: ragent-service
+  profiles:
+    active: local
+
 
   servlet:
     multipart:
@@ -30,7 +33,7 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
-      password: 123456
+#      password: 123456
 
 milvus:
   uri: http://localhost:19530
