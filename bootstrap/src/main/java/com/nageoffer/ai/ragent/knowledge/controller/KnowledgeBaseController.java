@@ -99,7 +99,7 @@ public class KnowledgeBaseController {
     public Result<List<ChunkStrategyVO>> listChunkStrategies() {
         List<ChunkStrategyVO> list = Arrays.stream(ChunkingMode.values())
                 .filter(ChunkingMode::isVisible)
-                .map(mode -> new ChunkStrategyVO(mode.getValue(), mode.getLabel()))
+                .map(mode -> new ChunkStrategyVO(mode.getValue(), mode.getLabel(), mode.getDefaultConfig()))
                 .toList();
         return Results.success(list);
     }

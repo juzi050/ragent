@@ -15,19 +15,22 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.mq.consumer;
+package com.nageoffer.ai.ragent.framework.mq.producer;
+
+import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
 
 /**
- * 消费者定义
+ * 事务消息回查接口，按 topic 注册到 {@link DelegatingTransactionListener}
+ * <p>
+ * 回查时 Broker 可能将请求发送到任意实例，因此实现类必须基于消息内容（而非内存状态）查询 DB 判断本地事务是否已提交。
  */
-public record MQConsumerDefinition(String beanName, Class<?> consumerClass, MessageQueueConsumer<Object> consumer,
-                                   MQConsumer annotation, Class<?> payloadType) {
+public interface TransactionChecker {
 
-    public String getTopic() {
-        return annotation.topic();
-    }
-
-    public String getConsumerGroup() {
-        return annotation.consumerGroup();
-    }
+    /**
+     * 检查本地事务是否已提交
+     *
+     * @param message 消息体，包含业务载荷，可从中提取业务参数查询 DB
+     * @return true 表示本地事务已提交（消息可投递），false 表示已回滚（消息丢弃）
+     */
+    boolean check(MessageWrapper<?> message);
 }

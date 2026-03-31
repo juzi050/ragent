@@ -40,8 +40,6 @@ public class SemaphoreInitializer {
         RagSemaphoreProperties.PermitExpirableConfig config = semaphoreProperties.getDocumentUpload();
         RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(config.getName());
 
-        // 先触发一次过期 permit 清理，再按最新目标值对齐总额度。
-        semaphore.availablePermits();
         semaphore.setPermits(config.getMaxConcurrent());
         log.info("Initialized document upload semaphore: name={}, maxConcurrent={}",
                 config.getName(),

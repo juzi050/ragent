@@ -17,53 +17,19 @@
 
 package com.nageoffer.ai.ragent.core.chunk;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 分块配置对象
- * 统一的分块参数配置，支持各种分块策略
+ * 分块配置 sealed interface
+ * 通过具体 record 实现类型安全的配置传递，消除魔法字符串
+ *
+ * @see FixedSizeOptions 固定大小切分配置
+ * @see TextBoundaryOptions 文本边界切分配置（结构感知等）
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class ChunkingOptions {
+public sealed interface ChunkingOptions permits FixedSizeOptions, TextBoundaryOptions {
 
     /**
-     * 块的目标大小（字符数）
+     * 将配置导出为 Map，用于 API 返回和配置校验
      */
-    @Builder.Default
-    private Integer chunkSize = 512;
-
-    /**
-     * 相邻块之间的重叠大小
-     */
-    @Builder.Default
-    private Integer overlapSize = 128;
-
-    /**
-     * 自定义分割符（用于特定策略）
-     */
-    private String separator;
-
-    /**
-     * 扩展元数据（用于传递策略特定参数）
-     */
-    @Builder.Default
-    private Map<String, Object> metadata = new HashMap<>();
-
-    /**
-     * 获取元数据值
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T getMetadata(String key, T defaultValue) {
-        Object value = metadata.get(key);
-        return value != null ? (T) value : defaultValue;
-    }
+    Map<String, Integer> toConfigMap();
 }

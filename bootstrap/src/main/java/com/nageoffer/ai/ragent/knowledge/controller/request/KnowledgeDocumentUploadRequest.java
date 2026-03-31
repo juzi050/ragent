@@ -56,46 +56,10 @@ public class KnowledgeDocumentUploadRequest {
     private String chunkStrategy;
 
     /**
-     * 分块参数JSON（可选，优先于下面字段）
-     * 仅在 processMode=chunk 时有效
+     * 分块参数JSON，processMode=chunk 时必传
+     * 如 {"chunkSize":512,"overlapSize":128} 或 {"targetChars":1400,"maxChars":1800,"minChars":600,"overlapChars":0}
      */
     private String chunkConfig;
-
-    /**
-     * 固定大小分块：块大小
-     * 仅在 processMode=chunk 时有效
-     */
-    private Integer chunkSize;
-
-    /**
-     * 固定大小分块：重叠大小
-     * 仅在 processMode=chunk 时有效
-     */
-    private Integer overlapSize;
-
-    /**
-     * 结构感知：理想块大小
-     * 仅在 processMode=chunk 时有效
-     */
-    private Integer targetChars;
-
-    /**
-     * 结构感知：块上限
-     * 仅在 processMode=chunk 时有效
-     */
-    private Integer maxChars;
-
-    /**
-     * 结构感知：块下限
-     * 仅在 processMode=chunk 时有效
-     */
-    private Integer minChars;
-
-    /**
-     * 结构感知：重叠大小
-     * 仅在 processMode=chunk 时有效
-     */
-    private Integer overlapChars;
 
     /**
      * 数据通道（Pipeline）ID

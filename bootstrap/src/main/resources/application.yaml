@@ -5,7 +5,7 @@ server:
 
 spring:
   application:
-    name: ragent-service
+    name: ragent${unique-name:}-service
   profiles:
     active: local
 
@@ -35,6 +35,12 @@ spring:
       port: 6379
 #      password: 123456
 
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: ragent-producer${unique-name:}_pg
+    send-message-timeout: 2000
+
 milvus:
   uri: http://localhost:19530
 
@@ -44,7 +50,7 @@ rag:
 
   default:
     collection-name: rag_default_store
-    dimension: 4096
+    dimension: 1536
     metric-type: COSINE
 
   query-rewrite:

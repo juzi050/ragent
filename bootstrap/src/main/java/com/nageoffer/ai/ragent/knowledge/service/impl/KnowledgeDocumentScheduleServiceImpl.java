@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.knowledge.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
@@ -107,10 +108,13 @@ public class KnowledgeDocumentScheduleServiceImpl implements KnowledgeDocumentSc
                     .build();
             scheduleMapper.insert(schedule);
         } else {
-            existing.setCronExpr(cron);
-            existing.setEnabled(enabled ? 1 : 0);
-            existing.setNextRunTime(nextRunTime);
-            scheduleMapper.updateById(existing);
+            scheduleMapper.update(
+                    new LambdaUpdateWrapper<KnowledgeDocumentScheduleDO>()
+                            .eq(KnowledgeDocumentScheduleDO::getId, existing.getId())
+                            .set(KnowledgeDocumentScheduleDO::getCronExpr, cron)
+                            .set(KnowledgeDocumentScheduleDO::getEnabled, enabled ? 1 : 0)
+                            .set(KnowledgeDocumentScheduleDO::getNextRunTime, nextRunTime)
+            );
         }
     }
 

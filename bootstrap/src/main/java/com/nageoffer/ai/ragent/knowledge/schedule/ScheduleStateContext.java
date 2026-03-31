@@ -15,22 +15,20 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.mq;
+package com.nageoffer.ai.ragent.knowledge.schedule;
 
-import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
-import com.nageoffer.ai.ragent.framework.mq.consumer.MQConsumer;
-import com.nageoffer.ai.ragent.framework.mq.consumer.MessageQueueConsumer;
-import lombok.extern.slf4j.Slf4j;
+import lombok.Builder;
+import lombok.Getter;
 
-/**
- * 示例消费者 - 验证 Redis Stream MQ 框架
- */
-@Slf4j
-@MQConsumer(topic = "mq:demo:topic", consumerGroup = "demo-consumer-group")
-public class DemoMessageConsumer implements MessageQueueConsumer<String> {
+import java.util.Date;
 
-    @Override
-    public void consume(MessageWrapper<String> message) {
-        log.info("收到消息，id: {}, body: {}, timestamp: {}", message.getId(), message.getBody(), message.getTimestamp());
-    }
+@Getter
+@Builder
+public class ScheduleStateContext {
+
+    private final String scheduleId;
+    private final String execId;
+    private final String cronExpr;
+    private final Date startTime;
+    private final Date nextRunTime;
 }

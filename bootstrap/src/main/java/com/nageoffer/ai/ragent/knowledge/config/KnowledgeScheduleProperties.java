@@ -15,48 +15,44 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.mq;
+package com.nageoffer.ai.ragent.knowledge.config;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.io.Serial;
-import java.io.Serializable;
-import java.util.UUID;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.annotation.Validated;
 
 /**
- * 消息体包装器
+ * 知识库定时任务配置
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class MessageWrapper<T> implements Serializable {
-
-    @Serial
-    private static final long serialVersionUID = 1L;
+@Validated
+@Configuration
+@ConfigurationProperties(prefix = "rag.knowledge.schedule")
+public class KnowledgeScheduleProperties {
 
     /**
-     * 业务 key
+     * 定时扫描间隔（毫秒）
      */
-    private String keys;
+    private Long scanDelayMs = 10000L;
 
     /**
-     * 业务载荷
+     * 分布式锁持有时长（秒）
      */
-    private T body;
+    private Long lockSeconds = 900L;
 
     /**
-     * 唯一标识，用于客户端幂等验证
+     * 每次扫描批量大小
      */
-    @Builder.Default
-    private String uuid = UUID.randomUUID().toString();
+    private Integer batchSize = 20;
 
     /**
-     * 消息发送时间
+     * 定时拉取最小间隔（秒）
      */
-    @Builder.Default
-    private Long timestamp = System.currentTimeMillis();
+    private Long minIntervalSeconds = 60L;
+
+    /**
+     * RUNNING 状态超时阈值（分钟），超过此时间未完成的文档重置为 FAILED
+     */
+    private Long runningTimeoutMinutes = 30L;
 }

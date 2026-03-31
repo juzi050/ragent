@@ -15,35 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.mq.producer;
+package com.nageoffer.ai.ragent.knowledge.schedule;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * 消息发送结果
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class SendResult {
-
-    /**
-     * 消息 ID
-     */
-    private String messageId;
-
-    /**
-     * 发送是否成功
-     */
-    private boolean success;
-
-    public static SendResult success(String messageId) {
-        return new SendResult(messageId, true);
-    }
-
-    public static SendResult fail(String messageId) {
-        return new SendResult(messageId, false);
-    }
+public record ScheduleLockLease(String scheduleId, String lockToken) {
 }

@@ -181,7 +181,8 @@ CREATE TABLE t_knowledge_document_chunk_log (
     pipeline_id        VARCHAR(20),
     extract_duration   BIGINT,
     chunk_duration     BIGINT,
-    embedding_duration BIGINT,
+    embed_duration     BIGINT,
+    persist_duration   BIGINT,
     total_duration     BIGINT,
     chunk_count        INTEGER,
     error_message      TEXT,
@@ -420,7 +421,7 @@ CREATE TABLE t_knowledge_vector (
     id          VARCHAR(20) PRIMARY KEY,
     content     TEXT,
     metadata    JSONB,
-    embedding   vector(4096)
+    embedding   vector(1536)
 );
 
 CREATE INDEX idx_kv_metadata ON t_knowledge_vector USING gin(metadata);
@@ -536,7 +537,8 @@ COMMENT ON COLUMN t_knowledge_document_chunk_log.chunk_strategy IS '分块策略
 COMMENT ON COLUMN t_knowledge_document_chunk_log.pipeline_id IS 'Pipeline ID';
 COMMENT ON COLUMN t_knowledge_document_chunk_log.extract_duration IS '提取耗时（毫秒）';
 COMMENT ON COLUMN t_knowledge_document_chunk_log.chunk_duration IS '分块耗时（毫秒）';
-COMMENT ON COLUMN t_knowledge_document_chunk_log.embedding_duration IS '向量化耗时（毫秒）';
+COMMENT ON COLUMN t_knowledge_document_chunk_log.embed_duration IS '向量化耗时（毫秒）';
+COMMENT ON COLUMN t_knowledge_document_chunk_log.persist_duration IS 'DB持久化耗时（毫秒）';
 COMMENT ON COLUMN t_knowledge_document_chunk_log.total_duration IS '总耗时（毫秒）';
 COMMENT ON COLUMN t_knowledge_document_chunk_log.chunk_count IS '分块数量';
 COMMENT ON COLUMN t_knowledge_document_chunk_log.error_message IS '错误信息';
