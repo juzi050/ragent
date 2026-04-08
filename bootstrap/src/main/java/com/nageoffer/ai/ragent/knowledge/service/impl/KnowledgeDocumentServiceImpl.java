@@ -77,10 +77,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -112,7 +110,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final IngestionEngine ingestionEngine;
     private final ChunkEmbeddingService chunkEmbeddingService;
     private final KnowledgeDocumentChunkLogMapper chunkLogMapper;
-    private final PlatformTransactionManager transactionManager;
+    private final TransactionOperations transactionOperations;
     private final MessageQueueProducer messageQueueProducer;
     private final KnowledgeScheduleProperties scheduleProperties;
     private final RemoteFileFetcher remoteFileFetcher;
@@ -259,7 +257,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                     return req;
                 })
                 .toList();
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+        transactionOperations.executeWithoutResult(status -> {
             knowledgeChunkService.deleteByDocId(docId);
             knowledgeChunkService.batchCreate(docId, chunks);
             vectorStoreService.deleteDocumentVectors(collectionName, docId);
@@ -387,9 +385,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private void markChunkFailed(String docId) {
-        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
-        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        txTemplate.executeWithoutResult(status -> {
+        transactionOperations.executeWithoutResult(status -> {
             KnowledgeDocumentDO update = new KnowledgeDocumentDO();
             update.setId(docId);
             update.setStatus(DocumentStatus.FAILED.getCode());
@@ -403,6 +399,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     public void delete(String docId) {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+
+        // 禁止在文档分块运行时删除
+        if (DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
+            throw new ClientException("文档正在分块中，无法删除");
+        }
 
         knowledgeChunkService.deleteByDocId(docId);
         scheduleService.deleteByDocId(docId);
@@ -430,6 +431,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     public void update(String docId, KnowledgeDocumentUpdateRequest requestParam) {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+
+        // 禁止在文档分块运行时修改
+        if (DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
+            throw new ClientException("文档正在分块中，无法修改");
+        }
 
         String docName = requestParam == null ? null : requestParam.getDocName();
         if (!StringUtils.hasText(docName)) {
@@ -467,7 +473,59 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             }
         }
 
+        // 处理定时调度相关字段（仅 URL 类型文档支持）
+        boolean scheduleChanged = false;
+        if (SourceType.URL.getValue().equalsIgnoreCase(documentDO.getSourceType())) {
+            String newSourceLocation = requestParam.getSourceLocation();
+            Integer newScheduleEnabled = requestParam.getScheduleEnabled();
+            String newScheduleCron = requestParam.getScheduleCron();
+
+            if (StringUtils.hasText(newSourceLocation)) {
+                updateWrapper.set(KnowledgeDocumentDO::getSourceLocation, newSourceLocation.trim());
+                scheduleChanged = true;
+            }
+            if (newScheduleEnabled != null) {
+                updateWrapper.set(KnowledgeDocumentDO::getScheduleEnabled, newScheduleEnabled);
+                scheduleChanged = true;
+            }
+            if (StringUtils.hasText(newScheduleCron)) {
+                try {
+                    CronScheduleHelper.nextRunTime(newScheduleCron, new Date());
+                    // 验证 cron 周期不能太短（与 upsertSchedule 保持一致）
+                    if (CronScheduleHelper.isIntervalLessThan(newScheduleCron, new Date(), 60)) {
+                        throw new ClientException("定时周期不能小于 60 秒");
+                    }
+                } catch (IllegalArgumentException e) {
+                    throw new ClientException("定时表达式不合法: " + e.getMessage());
+                }
+                updateWrapper.set(KnowledgeDocumentDO::getScheduleCron, newScheduleCron.trim());
+                scheduleChanged = true;
+            }
+
+            // 验证：启用定时拉取时必须有 cron 和 sourceLocation
+            if (scheduleChanged) {
+                KnowledgeDocumentDO willBe = documentMapper.selectById(docId);
+                Integer finalEnabled = newScheduleEnabled != null ? newScheduleEnabled : willBe.getScheduleEnabled();
+                String finalCron = StringUtils.hasText(newScheduleCron) ? newScheduleCron.trim() : willBe.getScheduleCron();
+                String finalLocation = StringUtils.hasText(newSourceLocation) ? newSourceLocation.trim() : willBe.getSourceLocation();
+
+                if (finalEnabled != null && finalEnabled == 1) {
+                    if (!StringUtils.hasText(finalCron)) {
+                        throw new ClientException("启用定时拉取时必须设置定时表达式");
+                    }
+                    if (!StringUtils.hasText(finalLocation)) {
+                        throw new ClientException("启用定时拉取时必须设置来源地址");
+                    }
+                }
+            }
+        }
+
         documentMapper.update(updateWrapper);
+
+        if (scheduleChanged) {
+            KnowledgeDocumentDO updated = documentMapper.selectById(docId);
+            scheduleService.upsertSchedule(updated);
+        }
     }
 
     @Override
@@ -529,40 +587,57 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void enable(String docId, boolean enabled) {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
-        documentDO.setEnabled(enabled ? 1 : 0);
-        documentDO.setUpdatedBy(UserContext.getUsername());
-        documentMapper.updateById(documentDO);
-        scheduleService.syncScheduleIfExists(documentDO);
 
-        // 同步更新 Chunk 表的状态
-        knowledgeChunkService.updateEnabledByDocId(docId, enabled);
+        // 禁止在文档分块运行时修改
+        if (DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
+            throw new ClientException("文档正在分块中，无法修改");
+        }
 
-        if (!enabled) {
-            // 禁用文档时，从向量库中删除对应的向量
-            String collectionName = resolveCollectionName(documentDO.getKbId());
-            vectorStoreService.deleteDocumentVectors(collectionName, docId);
-        } else {
-            // 启用文档时，根据文档分块记录重建向量索引
-            KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(documentDO.getKbId());
-            String collectionName = kbDO.getCollectionName();
-            String embeddingModel = kbDO.getEmbeddingModel();
+        // 如果已经是目标状态，直接返回
+        int targetEnabled = enabled ? 1 : 0;
+        if (documentDO.getEnabled() != null && documentDO.getEnabled() == targetEnabled) {
+            return;
+        }
+
+        // 提前查知识库，两个分支都需要，避免重复查询
+        KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(documentDO.getKbId());
+        String collectionName = kbDO.getCollectionName();
+
+        // 启用时：embed 耗时较长，在事务外提前执行，避免长事务占用连接
+        List<VectorChunk> vectorChunks = null;
+        if (enabled) {
             List<KnowledgeChunkVO> chunks = knowledgeChunkService.listByDocId(docId);
-            List<VectorChunk> vectorChunks = chunks.stream().map(each ->
+            vectorChunks = chunks.stream().map(each ->
                     VectorChunk.builder()
                             .chunkId(each.getId())
                             .content(each.getContent())
                             .index(each.getChunkIndex())
                             .build()
             ).toList();
-            if (CollUtil.isNotEmpty(vectorChunks)) {
-                chunkEmbeddingService.embed(vectorChunks, embeddingModel);
-                vectorStoreService.indexDocumentChunks(collectionName, docId, vectorChunks);
+            if (CollUtil.isEmpty(vectorChunks)) {
+                log.warn("启用文档时未找到任何 Chunk，跳过向量重建，docId={}", docId);
+                return;
             }
+            chunkEmbeddingService.embed(vectorChunks, kbDO.getEmbeddingModel());
         }
+
+        final List<VectorChunk> finalVectorChunks = vectorChunks;
+        transactionOperations.executeWithoutResult(status -> {
+            documentDO.setEnabled(targetEnabled);
+            documentDO.setUpdatedBy(UserContext.getUsername());
+            documentMapper.updateById(documentDO);
+            scheduleService.syncScheduleIfExists(documentDO);
+            knowledgeChunkService.updateEnabledByDocId(docId, String.valueOf(kbDO.getId()), enabled);
+
+            if (!enabled) {
+                vectorStoreService.deleteDocumentVectors(collectionName, docId);
+            } else {
+                vectorStoreService.indexDocumentChunks(collectionName, docId, finalVectorChunks);
+            }
+        });
     }
 
     @Override

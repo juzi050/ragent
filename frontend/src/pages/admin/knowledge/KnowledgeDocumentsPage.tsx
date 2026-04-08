@@ -129,6 +129,9 @@ export function KnowledgeDocumentsPage() {
   const [detailStrategies, setDetailStrategies] = useState<ChunkStrategyOption[]>([]);
   const [detailPipelines, setDetailPipelines] = useState<IngestionPipeline[]>([]);
   const [detailConfigValues, setDetailConfigValues] = useState<Record<string, string>>({});
+  const [detailSourceLocation, setDetailSourceLocation] = useState("");
+  const [detailScheduleEnabled, setDetailScheduleEnabled] = useState(false);
+  const [detailScheduleCron, setDetailScheduleCron] = useState("");
   const [logTarget, setLogTarget] = useState<KnowledgeDocument | null>(null);
   const [logData, setLogData] = useState<PageResult<KnowledgeDocumentChunkLog> | null>(null);
   const [logLoading, setLogLoading] = useState(false);
@@ -180,6 +183,9 @@ export function KnowledgeDocumentsPage() {
       setDetailProcessMode(mode);
       setDetailChunkStrategy((detailTarget.chunkStrategy || "structure_aware").toLowerCase());
       setDetailPipelineId(detailTarget.pipelineId ? String(detailTarget.pipelineId) : "");
+      setDetailSourceLocation(detailTarget.sourceLocation || "");
+      setDetailScheduleEnabled(Boolean(detailTarget.scheduleEnabled));
+      setDetailScheduleCron(detailTarget.scheduleCron || "");
 
       // 从文档的 chunkConfig JSON 解析参数值
       const config = parseChunkConfig(detailTarget.chunkConfig);
@@ -200,6 +206,9 @@ export function KnowledgeDocumentsPage() {
       setDetailConfigValues({});
       setDetailStrategies([]);
       setDetailPipelines([]);
+      setDetailSourceLocation("");
+      setDetailScheduleEnabled(false);
+      setDetailScheduleCron("");
     }
   }, [detailTarget]);
 
@@ -278,6 +287,16 @@ export function KnowledgeDocumentsPage() {
         }
       } else {
         data.pipelineId = detailPipelineId;
+      }
+      // 添加定时调度相关字段（仅 URL 类型）
+      if (detailTarget.sourceType?.toLowerCase() === "url") {
+        if (detailSourceLocation.trim()) {
+          data.sourceLocation = detailSourceLocation.trim();
+        }
+        data.scheduleEnabled = detailScheduleEnabled ? 1 : 0;
+        if (detailScheduleCron.trim()) {
+          data.scheduleCron = detailScheduleCron.trim();
+        }
       }
       await updateDocument(String(detailTarget.id), data);
       toast.success("更新成功");
@@ -633,33 +652,41 @@ export function KnowledgeDocumentsPage() {
                 <Input value={detailName} onChange={(event) => setDetailName(event.target.value)} />
               </div>
 
-              {detailIsUrlSource && detailTarget.sourceLocation ? (
+              {detailIsUrlSource ? (
                 <>
                   <div>
                     <div className="text-sm font-medium mb-2">来源地址</div>
-                    <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
-                      {detailTarget.sourceLocation}
-                    </div>
+                    <Input
+                      value={detailSourceLocation}
+                      onChange={(e) => setDetailSourceLocation(e.target.value)}
+                      placeholder="https://example.com/document.pdf"
+                    />
                   </div>
-                  {detailTarget.scheduleEnabled ? (
-                    <div className="space-y-3 rounded-lg border p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium">开启定时拉取</div>
-                          <div className="text-sm text-muted-foreground">开启后按频率自动更新文档</div>
-                        </div>
-                        <Checkbox checked={Boolean(detailTarget.scheduleEnabled)} disabled />
+                  <div className="space-y-3 rounded-lg border p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-medium">开启定时拉取</div>
+                        <div className="text-sm text-muted-foreground">开启后按频率自动更新文档</div>
                       </div>
-                      {detailTarget.scheduleCron ? (
-                        <div>
-                          <div className="text-sm font-medium mb-2">拉取频率</div>
-                          <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
-                            {detailTarget.scheduleCron}
-                          </div>
-                        </div>
-                      ) : null}
+                      <Checkbox
+                        checked={detailScheduleEnabled}
+                        onCheckedChange={(checked) => setDetailScheduleEnabled(Boolean(checked))}
+                      />
                     </div>
-                  ) : null}
+                    {detailScheduleEnabled ? (
+                      <div>
+                        <div className="text-sm font-medium mb-2">拉取频率（Cron表达式）</div>
+                        <Input
+                          value={detailScheduleCron}
+                          onChange={(e) => setDetailScheduleCron(e.target.value)}
+                          placeholder="0 0 * * * (每小时)"
+                        />
+                        <div className="text-sm text-muted-foreground mt-1">
+                          例如：0 0 * * * (每小时)，0 0 0 * * * (每天)
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </>
               ) : null}
 

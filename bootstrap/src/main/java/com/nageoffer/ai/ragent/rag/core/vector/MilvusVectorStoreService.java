@@ -149,6 +149,26 @@ public class MilvusVectorStoreService implements VectorStoreService {
                 collectionName, chunkId, resp.getDeleteCnt());
     }
 
+    @Override
+    public void deleteChunksByIds(String collectionName, List<String> chunkIds) {
+        if (chunkIds == null || chunkIds.isEmpty()) {
+            return;
+        }
+        String idList = chunkIds.stream()
+                .map(id -> "\"" + id + "\"")
+                .collect(java.util.stream.Collectors.joining(", "));
+        String filter = "id in [" + idList + "]";
+
+        DeleteReq deleteReq = DeleteReq.builder()
+                .collectionName(collectionName)
+                .filter(filter)
+                .build();
+
+        DeleteResp resp = milvusClient.delete(deleteReq);
+        log.info("Milvus 批量删除 chunk 向量索引成功, collection={}, count={}, deleteCnt={}",
+                collectionName, chunkIds.size(), resp.getDeleteCnt());
+    }
+
     private List<float[]> extractVectors(List<VectorChunk> chunks, int expectedDim) {
         List<float[]> vectors = new ArrayList<>(chunks.size());
         for (VectorChunk chunk : chunks) {

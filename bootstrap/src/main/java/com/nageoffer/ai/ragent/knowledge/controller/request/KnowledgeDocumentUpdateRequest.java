@@ -46,4 +46,19 @@ public class KnowledgeDocumentUpdateRequest {
      * Pipeline ID（PIPELINE 模式）
      */
     private String pipelineId;
+
+    /**
+     * 来源位置（URL）
+     */
+    private String sourceLocation;
+
+    /**
+     * 是否开启定时拉取：1-启用，0-禁用
+     */
+    private Integer scheduleEnabled;
+
+    /**
+     * 定时表达式（cron）
+     */
+    private String scheduleCron;
 }
