@@ -19,16 +19,14 @@ package com.nageoffer.ai.ragent.core.chunk.strategy;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.core.chunk.AbstractEmbeddingChunker;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingMode;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingOptions;
+import com.nageoffer.ai.ragent.core.chunk.ChunkingStrategy;
+import com.nageoffer.ai.ragent.core.chunk.TextBoundaryOptions;
 import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
-import com.nageoffer.ai.ragent.infra.embedding.EmbeddingClient;
-import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.ToString;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -43,36 +41,7 @@ import java.util.regex.Pattern;
  * - 支持可选的 overlap
  */
 @Component
-public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
-
-    public StructureAwareTextChunker(ModelSelector modelSelector, List<EmbeddingClient> embeddingClients) {
-        super(modelSelector, embeddingClients);
-    }
-
-    // ----------- 可调参数（字符预算） -----------
-    /**
-     * 理想 chunk 字符数（尽量靠近）
-     */
-    @Value("${kb.chunk.semantic.targetChars:1400}")
-    private int targetChars;
-
-    /**
-     * 硬上限：超过则尽量在前一块截断；若当前块太小则允许轻微超限
-     */
-    @Value("${kb.chunk.semantic.maxChars:1800}")
-    private int maxChars;
-
-    /**
-     * 最小下限：小于该阈值会优先与后续块合并
-     */
-    @Value("${kb.chunk.semantic.minChars:600}")
-    private int minChars;
-
-    /**
-     * 邻接重叠字符数（默认 0：不开启，以避免重复噪声）；需要时可设置为 120~200
-     */
-    @Value("${kb.chunk.semantic.overlapChars:0}")
-    private int overlapChars;
+public class StructureAwareTextChunker implements ChunkingStrategy {
 
     private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+.*$");
     private static final Pattern CODE_FENCE = Pattern.compile("^```.*$");
@@ -85,13 +54,17 @@ public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
     }
 
     @Override
-    protected List<VectorChunk> doChunk(String text, ChunkingOptions config) {
+    public List<VectorChunk> chunk(String text, ChunkingOptions config) {
         if (StrUtil.isBlank(text)) return List.of();
 
-        int effectiveTarget = config == null ? targetChars : config.getMetadata("targetChars", targetChars);
-        int effectiveMax = config == null ? maxChars : config.getMetadata("maxChars", maxChars);
-        int effectiveMin = config == null ? minChars : config.getMetadata("minChars", minChars);
-        int effectiveOverlap = config == null ? overlapChars : config.getMetadata("overlapChars", overlapChars);
+        // 统一行尾：Windows \r\n → \n，老 Mac \r → \n，避免 \r 残留导致空行/标题识别失败
+        text = text.replace("\r\n", "\n").replace("\r", "\n");
+
+        TextBoundaryOptions opts = (TextBoundaryOptions) config;
+        int effectiveTarget = opts.targetChars();
+        int effectiveMax = opts.maxChars();
+        int effectiveMin = opts.minChars();
+        int effectiveOverlap = opts.overlapChars();
 
         // 1) 扫描成“块”（记录原文的 start/end 下标，确保输出 substring 完全等于原文）
         List<Block> blocks = segmentToBlocks(text);

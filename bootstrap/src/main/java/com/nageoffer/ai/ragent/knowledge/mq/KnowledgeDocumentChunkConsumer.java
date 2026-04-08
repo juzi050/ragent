@@ -20,30 +20,35 @@ package com.nageoffer.ai.ragent.knowledge.mq;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
-import com.nageoffer.ai.ragent.framework.mq.consumer.MQConsumer;
-import com.nageoffer.ai.ragent.framework.mq.consumer.MessageQueueConsumer;
 import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.springframework.stereotype.Component;
 
 /**
  * 文档分块任务 MQ 消费者
  * 负责异步执行耗时的文本提取、分块、向量嵌入及写库操作
  */
 @Slf4j
+@Component
 @RequiredArgsConstructor
-@MQConsumer(topic = KnowledgeDocumentChunkProducer.TOPIC, consumerGroup = "knowledge-document-chunk-consumer-group")
-public class KnowledgeDocumentChunkConsumer implements MessageQueueConsumer<KnowledgeDocumentChunkEvent> {
+@RocketMQMessageListener(
+        topic = "knowledge-document-chunk_topic${unique-name:}",
+        consumerGroup = "knowledge-document-chunk_cg${unique-name:}"
+)
+public class KnowledgeDocumentChunkConsumer implements RocketMQListener<MessageWrapper<KnowledgeDocumentChunkEvent>> {
 
     private final KnowledgeDocumentService documentService;
 
     @Override
-    public void consume(MessageWrapper<KnowledgeDocumentChunkEvent> message) {
+    public void onMessage(MessageWrapper<KnowledgeDocumentChunkEvent> message) {
         KnowledgeDocumentChunkEvent event = message.getBody();
-        log.info("开始消费文档分块任务，docId={}", event.getDocId());
 
-        // 消费者线程无 HTTP 上下文，手动注入操作人，与 ScheduleJob 保持一致
+        log.info("[消费者] 开始消费文档分块任务，docId={}, keys={}", event.getDocId(), message.getKeys());
+
         UserContext.set(LoginUser.builder().username(event.getOperator()).build());
         try {
             documentService.executeChunk(event.getDocId());

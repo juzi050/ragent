@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.ingestion.node;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nageoffer.ai.ragent.core.chunk.ChunkEmbeddingService;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingOptions;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingStrategyFactory;
 import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
@@ -46,6 +47,7 @@ public class ChunkerNode implements IngestionNode {
 
     private final ObjectMapper objectMapper;
     private final ChunkingStrategyFactory chunkingStrategyFactory;
+    private final ChunkEmbeddingService chunkEmbeddingService;
 
     @Override
     public String getNodeType() {
@@ -68,16 +70,16 @@ public class ChunkerNode implements IngestionNode {
         List<VectorChunk> results = chunker.chunk(text, chunkConfig);
         List<VectorChunk> chunks = convertToVectorChunks(results);
 
+        // 嵌入：为切分后的文本块生成向量
+        chunkEmbeddingService.embed(chunks, null);
+
         context.setChunks(chunks);
         return NodeResult.ok("已分块 " + chunks.size() + " 段");
     }
 
     private ChunkingOptions convertToChunkConfig(ChunkerSettings settings) {
-        return ChunkingOptions.builder()
-                .chunkSize(settings.getChunkSize())
-                .overlapSize(settings.getOverlapSize())
-                .separator(settings.getSeparator())
-                .build();
+        return settings.getStrategy().createDefaultOptions(
+                settings.getChunkSize(), settings.getOverlapSize());
     }
 
     private List<VectorChunk> convertToVectorChunks(List<VectorChunk> results) {

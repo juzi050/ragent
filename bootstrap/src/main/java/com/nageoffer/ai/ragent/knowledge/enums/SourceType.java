@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.knowledge.enums;
 
+import cn.hutool.core.util.StrUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -61,5 +62,19 @@ public enum SourceType {
             return URL;
         }
         return null;
+    }
+
+    /**
+     * 解析来源类型，空值或非法值抛出异常
+     */
+    public static SourceType normalize(String value) {
+        if (StrUtil.isBlank(value)) {
+            throw new IllegalArgumentException("来源类型不能为空");
+        }
+        SourceType result = fromValue(value);
+        if (result == null) {
+            throw new IllegalArgumentException("不支持的来源类型: " + value);
+        }
+        return result;
     }
 }

@@ -15,28 +15,23 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.mq.support;
+package com.nageoffer.ai.ragent.core.chunk;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
-
-import java.lang.reflect.Type;
+import java.util.Map;
 
 /**
- * MessageWrapper 编解码器
+ * 固定大小切分配置
+ *
+ * @param chunkSize   目标块大小（字符数）
+ * @param overlapSize 相邻块重叠大小（字符数）
  */
-public class MessageWrapperCodec {
+public record FixedSizeOptions(
+        int chunkSize,
+        int overlapSize
+) implements ChunkingOptions {
 
-    private final Gson gson = new Gson();
-
-    public String serialize(MessageWrapper<?> messageWrapper) {
-        return gson.toJson(messageWrapper);
-    }
-
-    public MessageWrapper<Object> deserialize(String payload, Class<?> bodyType) {
-        Class<?> actualBodyType = bodyType == null ? Object.class : bodyType;
-        Type messageType = TypeToken.getParameterized(MessageWrapper.class, actualBodyType).getType();
-        return gson.fromJson(payload, messageType);
+    @Override
+    public Map<String, Integer> toConfigMap() {
+        return Map.of("chunkSize", chunkSize, "overlapSize", overlapSize);
     }
 }

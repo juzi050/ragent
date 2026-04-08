@@ -59,4 +59,12 @@ public interface VectorStoreService {
      * @param chunkId        chunk 的唯一标识
      */
     void deleteChunkById(String collectionName, String chunkId);
+
+    /**
+     * 批量删除指定 chunk 的向量索引
+     *
+     * @param collectionName 向量空间名称（知识库 collectionName）
+     * @param chunkIds       chunk 唯一标识列表
+     */
+    void deleteChunksByIds(String collectionName, List<String> chunkIds);
 }

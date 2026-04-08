@@ -32,14 +32,6 @@ import java.util.List;
 public interface KnowledgeChunkService {
 
     /**
-     * 根据文档 ID 查询是否已存在分片
-     *
-     * @param docId 文档 ID
-     * @return 如果存在分片返回 true，否则返回 false
-     */
-    Boolean existsByDocId(String docId);
-
-    /**
      * 分页查询指定文档的分片列表
      *
      * @param docId        文档 ID
@@ -101,36 +93,22 @@ public interface KnowledgeChunkService {
     void enableChunk(String docId, String chunkId, boolean enabled);
 
     /**
-     * 批量启用文档分片
+     * 批量启用或禁用文档分片
      *
      * @param docId        文档 ID
-     * @param requestParam 批量处理请求参数
+     * @param requestParam 批量处理请求参数（为空表示操作全部）
+     * @param enabled      true=启用，false=禁用
      */
-    void batchEnable(String docId, KnowledgeChunkBatchRequest requestParam);
-
-    /**
-     * 批量禁用文档分片
-     *
-     * @param docId        文档 ID
-     * @param requestParam 批量处理请求参数
-     */
-    void batchDisable(String docId, KnowledgeChunkBatchRequest requestParam);
-
-    /**
-     * 根据文档 ID 重建向量索引
-     * 以数据库中状态为"已启用（enabled=1）"的分片为基准重新生成向量
-     *
-     * @param docId 文档 ID
-     */
-    void rebuildByDocId(String docId);
+    void batchToggleEnabled(String docId, KnowledgeChunkBatchRequest requestParam, boolean enabled);
 
     /**
      * 根据文档 ID 批量更新所有分片的启用状态
      *
      * @param docId   文档 ID
+     * @param kbId    知识库 ID（用于日志，避免重复查询）
      * @param enabled 是否启用
      */
-    void updateEnabledByDocId(String docId, boolean enabled);
+    void updateEnabledByDocId(String docId, String kbId, boolean enabled);
 
     /**
      * 根据文档 ID 查询所有分片列表

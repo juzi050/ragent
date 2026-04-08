@@ -67,9 +67,14 @@ public class KnowledgeDocumentChunkLogVO {
     private Long chunkDuration;
 
     /**
-     * 向量化耗时（毫秒）
+     * 嵌入 API 耗时（毫秒）
      */
-    private Long embeddingDuration;
+    private Long embedDuration;
+
+    /**
+     * DB 持久化耗时（毫秒）
+     */
+    private Long persistDuration;
 
     /**
      * 其他耗时（毫秒）

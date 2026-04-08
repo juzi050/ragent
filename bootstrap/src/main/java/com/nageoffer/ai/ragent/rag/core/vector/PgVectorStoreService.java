@@ -73,6 +73,17 @@ public class PgVectorStoreService implements VectorStoreService {
     }
 
     @Override
+    public void deleteChunksByIds(String collectionName, List<String> chunkIds) {
+        if (chunkIds == null || chunkIds.isEmpty()) {
+            return;
+        }
+        String placeholders = chunkIds.stream().map(id -> "?").collect(java.util.stream.Collectors.joining(", "));
+        // noinspection SqlDialectInspection,SqlNoDataSourceInspection
+        int deleted = jdbcTemplate.update("DELETE FROM t_knowledge_vector WHERE id IN (" + placeholders + ")", chunkIds.toArray());
+        log.info("批量删除 chunk 向量，collectionName={}, count={}, deleted={}", collectionName, chunkIds.size(), deleted);
+    }
+
+    @Override
     public void updateChunk(String collectionName, String docId, VectorChunk chunk) {
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         jdbcTemplate.update(

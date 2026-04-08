@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -46,6 +47,38 @@ public class HttpClientHelper {
 
     public HttpFetchResponse getWithLimit(String url, Map<String, String> headers, long maxBytes) {
         return doGet(url, headers, maxBytes);
+    }
+
+    public HttpFetchStream openStream(String url, Map<String, String> headers, long maxBytes) {
+        Request.Builder builder = new Request.Builder().url(url);
+        if (headers != null) {
+            headers.forEach(builder::addHeader);
+        }
+        try {
+            Response response = client.newCall(builder.get().build()).execute();
+            if (!response.isSuccessful()) {
+                String body = response.body() != null ? response.body().string() : "";
+                response.close();
+                throw new ServiceException("网络请求失败: " + response.code() + " " + body);
+            }
+            ResponseBody responseBody = response.body();
+            String contentType = response.header("Content-Type");
+            String disposition = response.header("Content-Disposition");
+            String fileName = resolveFileName(disposition, url);
+            String etag = response.header("ETag");
+            String lastModified = response.header("Last-Modified");
+            Long contentLength = parseContentLength(response.header("Content-Length"));
+            if (maxBytes > 0 && contentLength != null && contentLength > maxBytes) {
+                response.close();
+                throw new ServiceException("文件大小超过限制: " + maxBytes + " bytes");
+            }
+            InputStream bodyStream = responseBody == null
+                    ? InputStream.nullInputStream()
+                    : wrapWithLimit(responseBody.byteStream(), maxBytes);
+            return new HttpFetchStream(response, bodyStream, contentType, fileName, etag, lastModified, contentLength);
+        } catch (IOException e) {
+            throw new ServiceException("网络请求失败: " + e.getMessage());
+        }
     }
 
     private HttpFetchResponse doGet(String url, Map<String, String> headers, long maxBytes) {
@@ -165,12 +198,65 @@ public class HttpClientHelper {
         }
     }
 
+    private InputStream wrapWithLimit(InputStream inputStream, long maxBytes) {
+        if (maxBytes <= 0) {
+            return inputStream;
+        }
+        return new InputStream() {
+            private long total;
+
+            @Override
+            public int read() throws IOException {
+                int value = inputStream.read();
+                if (value != -1) {
+                    ensureWithinLimit(1);
+                }
+                return value;
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                int count = inputStream.read(b, off, len);
+                if (count > 0) {
+                    ensureWithinLimit(count);
+                }
+                return count;
+            }
+
+            @Override
+            public void close() throws IOException {
+                inputStream.close();
+            }
+
+            private void ensureWithinLimit(int delta) {
+                total += delta;
+                if (total > maxBytes) {
+                    throw new ServiceException("文件大小超过限制: " + maxBytes + " bytes");
+                }
+            }
+        };
+    }
+
     public record HttpFetchResponse(byte[] body,
                                     String contentType,
                                     String fileName,
                                     String etag,
                                     String lastModified,
                                     Long contentLength) {
+    }
+
+    public record HttpFetchStream(Response response,
+                                  InputStream bodyStream,
+                                  String contentType,
+                                  String fileName,
+                                  String etag,
+                                  String lastModified,
+                                  Long contentLength) implements AutoCloseable {
+
+        @Override
+        public void close() {
+            response.close();
+        }
     }
 
     public record HttpHeadResponse(String etag, String lastModified, String contentType, Long contentLength,

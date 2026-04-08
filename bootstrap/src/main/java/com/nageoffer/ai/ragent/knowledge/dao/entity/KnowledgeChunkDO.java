@@ -89,13 +89,11 @@ public class KnowledgeChunkDO {
     /**
      * 创建人
      */
-    @TableField(fill = FieldFill.INSERT)
     private String createdBy;
 
     /**
      * 修改人
      */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
     private String updatedBy;
 
     /**

@@ -35,7 +35,18 @@
       "Bash(mkdir:*)",
       "Bash(/Users/machen/workspace/nageoffer/ragent/resources/database/schema_pg.sql:*)",
       "Bash(psql:*)",
-      "Bash(/tmp/alter_ids.sql:*)"
+      "Bash(/tmp/alter_ids.sql:*)",
+      "Bash(grep -E \"\\\\.\\(java\\)$\")",
+      "WebFetch(domain:www.alibabacloud.com)",
+      "Bash(mvn dependency:resolve:*)",
+      "WebFetch(domain:mvnrepository.com)",
+      "Bash(mvn dependency:get:*)",
+      "Bash(xargs jar:*)",
+      "Bash(xargs sh:*)",
+      "Bash(mvn dependency:build-classpath:*)",
+      "Bash(jar xf:*)",
+      "Bash(mvn test:*)",
+      "Bash(mvn test-compile:*)"
     ]
   }
 }

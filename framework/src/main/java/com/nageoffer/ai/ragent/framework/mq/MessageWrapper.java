@@ -27,32 +27,19 @@ import java.io.Serializable;
 import java.util.UUID;
 
 /**
- * 消息队列统一消息体封装
- *
- * @param <T> 业务载荷类型
+ * 消息体包装器
  */
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class MessageWrapper<T> implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
     /**
-     * 消息唯一 ID，默认自动生成
-     */
-    @Builder.Default
-    private String id = UUID.randomUUID().toString();
-
-    /**
-     * 目标 topic
-     */
-    private String topic;
-
-    /**
-     * 业务 key，可用于幂等判断
+     * 业务 key
      */
     private String keys;
 
@@ -62,8 +49,14 @@ public class MessageWrapper<T> implements Serializable {
     private T body;
 
     /**
-     * 发送时间戳，默认当前时间
+     * 唯一标识，用于客户端幂等验证
      */
     @Builder.Default
-    private long timestamp = System.currentTimeMillis();
+    private String uuid = UUID.randomUUID().toString();
+
+    /**
+     * 消息发送时间
+     */
+    @Builder.Default
+    private Long timestamp = System.currentTimeMillis();
 }

@@ -75,9 +75,7 @@ const NODE_TYPE_OPTIONS = [
 
 const CHUNK_STRATEGY_OPTIONS = [
   { value: "fixed_size", label: "fixed_size" },
-  { value: "structure_aware", label: "structure_aware" },
-  { value: "sentence", label: "sentence" },
-  { value: "paragraph", label: "paragraph" }
+  { value: "structure_aware", label: "structure_aware" }
 ];
 
 const ENHANCER_TASK_OPTIONS = [

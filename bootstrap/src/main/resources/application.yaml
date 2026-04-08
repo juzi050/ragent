@@ -5,7 +5,10 @@ server:
 
 spring:
   application:
-    name: ragent-service
+    name: ragent${unique-name:}-service
+  profiles:
+    active: local
+
 
   servlet:
     multipart:
@@ -30,7 +33,13 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
-      password: 123456
+#      password: 123456
+
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: ragent-producer${unique-name:}_pg
+    send-message-timeout: 2000
 
 milvus:
   uri: http://localhost:19530
@@ -65,6 +74,13 @@ rag:
     summary-max-chars: 200
     title-max-length: 30
 
+  semaphore:
+    document-upload:
+      name: rag:document:upload
+      max-concurrent: 10
+      max-wait-seconds: 5
+      lease-seconds: 300
+
   knowledge:
     schedule:
       scan-delay-ms: 10000
@@ -95,7 +111,7 @@ ai:
     ollama:
       url: http://localhost:11434
       endpoints:
-        chat: /api/chat
+        chat: /v1/chat/completions
         embedding: /api/embed
     bailian:
       url: https://dashscope.aliyuncs.com

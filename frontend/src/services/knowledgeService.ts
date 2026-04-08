@@ -27,12 +27,6 @@ export interface KnowledgeDocument {
   processMode?: string | null;
   chunkStrategy?: string | null;
   chunkConfig?: string | null;
-  chunkSize?: number | null;
-  overlapSize?: number | null;
-  targetChars?: number | null;
-  maxChars?: number | null;
-  minChars?: number | null;
-  overlapChars?: number | null;
   pipelineId?: string | number | null;
   status?: string | null;
   createdBy?: string | null;
@@ -72,7 +66,8 @@ export interface KnowledgeDocumentChunkLog {
   pipelineName?: string | null;
   extractDuration?: number | null;
   chunkDuration?: number | null;
-  embeddingDuration?: number | null;
+  embedDuration?: number | null;
+  persistDuration?: number | null;
   otherDuration?: number | null;
   totalDuration?: number | null;
   chunkCount?: number | null;
@@ -109,13 +104,8 @@ export interface KnowledgeDocumentUploadPayload {
   scheduleEnabled?: boolean;
   scheduleCron?: string | null;
   processMode?: "chunk" | "pipeline";
-  chunkStrategy?: "fixed_size" | "structure_aware";
-  chunkSize?: number | null;
-  overlapSize?: number | null;
-  targetChars?: number | null;
-  maxChars?: number | null;
-  minChars?: number | null;
-  overlapChars?: number | null;
+  chunkStrategy?: string;
+  chunkConfig?: string | null;
   pipelineId?: string | null;
 }
 
@@ -129,6 +119,7 @@ export interface KnowledgeChunkPageParams {
 export interface ChunkStrategyOption {
   value: string;
   label: string;
+  defaultConfig: Record<string, number>;
 }
 
 export const getChunkStrategies = async (): Promise<ChunkStrategyOption[]> => {
@@ -231,23 +222,8 @@ export const uploadDocument = async (
   if (payload.chunkStrategy) {
     formData.append("chunkStrategy", payload.chunkStrategy);
   }
-  if (payload.chunkSize !== undefined && payload.chunkSize !== null) {
-    formData.append("chunkSize", String(payload.chunkSize));
-  }
-  if (payload.overlapSize !== undefined && payload.overlapSize !== null) {
-    formData.append("overlapSize", String(payload.overlapSize));
-  }
-  if (payload.targetChars !== undefined && payload.targetChars !== null) {
-    formData.append("targetChars", String(payload.targetChars));
-  }
-  if (payload.maxChars !== undefined && payload.maxChars !== null) {
-    formData.append("maxChars", String(payload.maxChars));
-  }
-  if (payload.minChars !== undefined && payload.minChars !== null) {
-    formData.append("minChars", String(payload.minChars));
-  }
-  if (payload.overlapChars !== undefined && payload.overlapChars !== null) {
-    formData.append("overlapChars", String(payload.overlapChars));
+  if (payload.chunkConfig) {
+    formData.append("chunkConfig", payload.chunkConfig);
   }
   if (payload.pipelineId) {
     formData.append("pipelineId", payload.pipelineId);
@@ -263,7 +239,16 @@ export const getDocument = async (docId: string): Promise<KnowledgeDocument> => 
   return api.get<KnowledgeDocument, KnowledgeDocument>(`/knowledge-base/docs/${docId}`);
 };
 
-export const updateDocument = async (docId: string, data: { docName?: string }): Promise<void> => {
+export const updateDocument = async (docId: string, data: {
+  docName?: string;
+  processMode?: string;
+  chunkStrategy?: string;
+  chunkConfig?: string;
+  pipelineId?: string;
+  sourceLocation?: string;
+  scheduleEnabled?: number;
+  scheduleCron?: string;
+}): Promise<void> => {
   await api.put(`/knowledge-base/docs/${docId}`, data);
 };
 
@@ -325,28 +310,22 @@ export const deleteChunk = async (docId: string, chunkId: string): Promise<void>
   await api.delete(`/knowledge-base/docs/${docId}/chunks/${chunkId}`);
 };
 
-export const enableChunk = async (docId: string, chunkId: string): Promise<void> => {
-  await api.post(`/knowledge-base/docs/${docId}/chunks/${chunkId}/enable`);
-};
-
-export const disableChunk = async (docId: string, chunkId: string): Promise<void> => {
-  await api.post(`/knowledge-base/docs/${docId}/chunks/${chunkId}/disable`);
-};
-
-export const batchEnableChunks = async (docId: string, chunkIds?: Array<string | number>): Promise<void> => {
-  await api.post(`/knowledge-base/docs/${docId}/chunks/batch-enable`, {
-    chunkIds: chunkIds && chunkIds.length ? chunkIds : undefined
+export const toggleChunk = async (docId: string, chunkId: string, enabled: boolean): Promise<void> => {
+  await api.patch(`/knowledge-base/docs/${docId}/chunks/${chunkId}/enable`, null, {
+    params: { value: enabled }
   });
 };
 
-export const batchDisableChunks = async (docId: string, chunkIds?: Array<string | number>): Promise<void> => {
-  await api.post(`/knowledge-base/docs/${docId}/chunks/batch-disable`, {
-    chunkIds: chunkIds && chunkIds.length ? chunkIds : undefined
-  });
-};
-
-export const rebuildChunks = async (docId: string): Promise<void> => {
-  await api.post(`/knowledge-base/docs/${docId}/chunks/rebuild`);
+export const batchToggleChunks = async (
+  docId: string,
+  enabled: boolean,
+  chunkIds: Array<string | number>
+): Promise<void> => {
+  await api.patch(
+    `/knowledge-base/docs/${docId}/chunks/batch-enable`,
+    { chunkIds },
+    { params: { value: enabled } }
+  );
 };
 
 // 文档分块日志管理

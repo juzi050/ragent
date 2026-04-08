@@ -21,6 +21,8 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.infra.embedding.EmbeddingClient;
 import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
@@ -29,41 +31,40 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 具有 Embedding 感知的分块模板类
- * 子类仅负责文本切分；Embedding 向量的生成由模板方法统一处理
+ * 分块嵌入服务
+ * 职责单一：为已切分的文本块调用嵌入 API 生成向量
  */
-public abstract class AbstractEmbeddingChunker implements ChunkingStrategy {
-
-    private static final String EMBEDDING_MODEL_KEY = "embeddingModel";
+@Service
+public class ChunkEmbeddingService {
 
     private final ModelSelector modelSelector;
     private final Map<String, EmbeddingClient> embeddingClientsByProvider;
 
-    protected AbstractEmbeddingChunker(ModelSelector modelSelector, List<EmbeddingClient> embeddingClients) {
+    public ChunkEmbeddingService(ModelSelector modelSelector, List<EmbeddingClient> embeddingClients) {
         this.modelSelector = modelSelector;
         this.embeddingClientsByProvider = embeddingClients.stream()
                 .collect(Collectors.toMap(EmbeddingClient::provider, Function.identity()));
     }
 
-    @Override
-    public final List<VectorChunk> chunk(String text, ChunkingOptions config) {
-        List<VectorChunk> chunks = doChunk(text, config);
+    /**
+     * 为分块列表计算嵌入向量
+     *
+     * @param chunks         已切分的文本块（embedding 字段将被原地填充）
+     * @param embeddingModel 嵌入模型 ID，null 时使用系统默认模型
+     */
+    public void embed(List<VectorChunk> chunks, String embeddingModel) {
         if (chunks == null || chunks.isEmpty()) {
-            return List.of();
+            return;
         }
-        if (chunks.stream().allMatch(chunk -> chunk.getEmbedding() != null && chunk.getEmbedding().length > 0)) {
-            return chunks;
+        if (chunks.stream().allMatch(c -> c.getEmbedding() != null && c.getEmbedding().length > 0)) {
+            return;
         }
-        ModelTarget target = resolveEmbeddingTarget(config);
+        ModelTarget target = resolveTarget(embeddingModel);
         List<List<Float>> vectors = embedBatch(chunks, target);
         applyEmbeddings(chunks, vectors);
-        return chunks;
     }
 
-    protected abstract List<VectorChunk> doChunk(String text, ChunkingOptions config);
-
-    protected ModelTarget resolveEmbeddingTarget(ChunkingOptions config) {
-        String modelId = config == null ? null : config.getMetadata(EMBEDDING_MODEL_KEY, null);
+    private ModelTarget resolveTarget(String modelId) {
         List<ModelTarget> targets = modelSelector.selectEmbeddingCandidates();
         if (targets == null || targets.isEmpty()) {
             throw new ClientException("No embedding model available");
@@ -72,7 +73,7 @@ public abstract class AbstractEmbeddingChunker implements ChunkingStrategy {
             return targets.get(0);
         }
         return targets.stream()
-                .filter(target -> modelId.equals(target.id()))
+                .filter(t -> modelId.equals(t.id()))
                 .findFirst()
                 .orElseThrow(() -> new ClientException("Embedding model not matched: " + modelId));
     }
@@ -83,7 +84,7 @@ public abstract class AbstractEmbeddingChunker implements ChunkingStrategy {
             throw new ClientException("Embedding client not found: " + target.candidate().getProvider());
         }
         List<String> texts = chunks.stream()
-                .map(chunk -> chunk.getContent() == null ? "" : chunk.getContent())
+                .map(c -> c.getContent() == null ? "" : c.getContent())
                 .toList();
         return client.embedBatch(texts, target);
     }

@@ -21,17 +21,18 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.framework.mq.producer.MessageQueueProducer;
 import com.nageoffer.ai.ragent.rag.controller.request.MessageFeedbackRequest;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.MessageFeedbackDO;
-import com.nageoffer.ai.ragent.rag.dao.mapper.MessageFeedbackMapper;
 import com.nageoffer.ai.ragent.rag.dao.mapper.ConversationMessageMapper;
-import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.exception.ClientException;
-import com.nageoffer.ai.ragent.rag.mq.MessageFeedbackProducer;
+import com.nageoffer.ai.ragent.rag.dao.mapper.MessageFeedbackMapper;
 import com.nageoffer.ai.ragent.rag.mq.event.MessageFeedbackEvent;
 import com.nageoffer.ai.ragent.rag.service.MessageFeedbackService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -46,7 +47,10 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
 
     private final MessageFeedbackMapper feedbackMapper;
     private final ConversationMessageMapper conversationMessageMapper;
-    private final MessageFeedbackProducer feedbackProducer;
+    private final MessageQueueProducer messageQueueProducer;
+
+    @Value("message-feedback_topic${unique-name:}")
+    private String feedbackTopic;
 
     @Override
     public void submitFeedbackAsync(String messageId, MessageFeedbackRequest request) {
@@ -66,7 +70,7 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
                 .comment(request.getComment())
                 .submitTime(System.currentTimeMillis())
                 .build();
-        feedbackProducer.sendFeedbackEvent(event);
+        messageQueueProducer.send(feedbackTopic, userId + ":" + messageId, "消息反馈", event);
     }
 
     @Override

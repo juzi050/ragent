@@ -15,37 +15,34 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.knowledge.mq;
+package com.nageoffer.ai.ragent.knowledge.config;
 
-import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
-import com.nageoffer.ai.ragent.framework.mq.producer.MessageQueueProducer;
-import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentChunkEvent;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RPermitExpirableSemaphore;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
 /**
- * 文档分块任务 MQ 生产者
+ * 文档上传信号量初始化器
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class KnowledgeDocumentChunkProducer {
+public class SemaphoreInitializer {
 
-    public static final String TOPIC = "mq:knowledge-document:chunk:topic";
+    private final RedissonClient redissonClient;
+    private final RagSemaphoreProperties semaphoreProperties;
 
-    private final MessageQueueProducer messageQueueProducer;
+    @PostConstruct
+    public void documentUploadSemaphoreInitialize() {
+        RagSemaphoreProperties.PermitExpirableConfig config = semaphoreProperties.getDocumentUpload();
+        RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(config.getName());
 
-    /**
-     * 发送文档分块任务事件
-     */
-    public void sendChunkEvent(KnowledgeDocumentChunkEvent event) {
-        MessageWrapper<KnowledgeDocumentChunkEvent> wrapper = MessageWrapper.<KnowledgeDocumentChunkEvent>builder()
-                .topic(TOPIC)
-                .keys(event.getDocId())
-                .body(event)
-                .build();
-        messageQueueProducer.send(wrapper);
-        log.info("文档分块任务已入队，docId={}", event.getDocId());
+        semaphore.setPermits(config.getMaxConcurrent());
+        log.info("Initialized document upload semaphore: name={}, maxConcurrent={}",
+                config.getName(),
+                config.getMaxConcurrent());
     }
 }
