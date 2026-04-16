@@ -112,7 +112,7 @@ ai:
       url: http://localhost:11434
       endpoints:
         chat: /v1/chat/completions
-        embedding: /api/embed
+        embedding: /v1/embeddings
     bailian:
       url: https://dashscope.aliyuncs.com
       api-key: ${BAILIAN_API_KEY:}

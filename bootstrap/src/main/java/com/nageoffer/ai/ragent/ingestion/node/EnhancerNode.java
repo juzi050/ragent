@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
-import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.EnhanceType;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
@@ -31,17 +30,13 @@ import com.nageoffer.ai.ragent.ingestion.domain.settings.EnhancerSettings;
 import com.nageoffer.ai.ragent.ingestion.prompt.EnhancerPromptManager;
 import com.nageoffer.ai.ragent.ingestion.util.JsonResponseParser;
 import com.nageoffer.ai.ragent.ingestion.util.PromptTemplateRenderer;
-import com.nageoffer.ai.ragent.infra.chat.ChatClient;
-import com.nageoffer.ai.ragent.infra.model.ModelSelector;
-import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 文本增强节点
@@ -51,16 +46,11 @@ import java.util.stream.Collectors;
 public class EnhancerNode implements IngestionNode {
 
     private final ObjectMapper objectMapper;
-    private final ModelSelector modelSelector;
-    private final Map<String, ChatClient> chatClientsByProvider;
+    private final LLMService llmService;
 
-    public EnhancerNode(ObjectMapper objectMapper,
-                        ModelSelector modelSelector,
-                        List<ChatClient> chatClients) {
+    public EnhancerNode(ObjectMapper objectMapper, LLMService llmService) {
         this.objectMapper = objectMapper;
-        this.modelSelector = modelSelector;
-        this.chatClientsByProvider = chatClients.stream()
-                .collect(Collectors.toMap(ChatClient::provider, Function.identity()));
+        this.llmService = llmService;
     }
 
     @Override
@@ -136,30 +126,7 @@ public class EnhancerNode implements IngestionNode {
     }
 
     private String chat(ChatRequest request, String modelId) {
-        ModelTarget target = resolveChatTarget(modelId, request == null ? null : request.getThinking());
-        ChatClient client = chatClientsByProvider.get(target.candidate().getProvider());
-        if (client == null) {
-            throw new ClientException("未找到聊天模型客户端: " + target.candidate().getProvider());
-        }
-        return client.chat(request, target);
-    }
-
-    private ModelTarget resolveChatTarget(String modelId, Boolean thinking) {
-        List<ModelTarget> targets = modelSelector.selectChatCandidates(thinking);
-        return pickTarget(targets, modelId);
-    }
-
-    private ModelTarget pickTarget(List<ModelTarget> targets, String modelId) {
-        if (targets == null || targets.isEmpty()) {
-            throw new ClientException("未找到可用Chat模型");
-        }
-        if (!StringUtils.hasText(modelId)) {
-            return targets.get(0);
-        }
-        return targets.stream()
-                .filter(target -> modelId.equals(target.id()))
-                .findFirst()
-                .orElseThrow(() -> new ClientException("未匹配到Chat模型: " + modelId));
+        return llmService.chat(request, modelId);
     }
 
     private void applyTaskResult(IngestionContext context, EnhanceType type, String response) {

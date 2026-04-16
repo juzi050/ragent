@@ -88,54 +88,58 @@ public class RAGChatServiceImpl implements RAGChatService {
         boolean thinkingEnabled = Boolean.TRUE.equals(deepThinking);
 
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
+        try {
+            String userId = UserContext.getUserId();
+            List<ChatMessage> history = memoryService.loadAndAppend(actualConversationId, userId, ChatMessage.user(question));
 
-        String userId = UserContext.getUserId();
-        List<ChatMessage> history = memoryService.loadAndAppend(actualConversationId, userId, ChatMessage.user(question));
+            RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
+            List<SubQuestionIntent> subIntents = intentResolver.resolve(rewriteResult);
 
-        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
-        List<SubQuestionIntent> subIntents = intentResolver.resolve(rewriteResult);
+            GuidanceDecision guidanceDecision = guidanceService.detectAmbiguity(rewriteResult.rewrittenQuestion(), subIntents);
+            if (guidanceDecision.isPrompt()) {
+                callback.onContent(guidanceDecision.getPrompt());
+                callback.onComplete();
+                return;
+            }
 
-        GuidanceDecision guidanceDecision = guidanceService.detectAmbiguity(rewriteResult.rewrittenQuestion(), subIntents);
-        if (guidanceDecision.isPrompt()) {
-            callback.onContent(guidanceDecision.getPrompt());
-            callback.onComplete();
-            return;
-        }
+            boolean allSystemOnly = subIntents.stream()
+                    .allMatch(si -> intentResolver.isSystemOnly(si.nodeScores()));
+            if (allSystemOnly) {
+                String customPrompt = subIntents.stream()
+                        .flatMap(si -> si.nodeScores().stream())
+                        .map(ns -> ns.getNode().getPromptTemplate())
+                        .filter(StrUtil::isNotBlank)
+                        .findFirst()
+                        .orElse(null);
+                StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), history, customPrompt, callback);
+                taskManager.bindHandle(taskId, handle);
+                return;
+            }
 
-        boolean allSystemOnly = subIntents.stream()
-                .allMatch(si -> intentResolver.isSystemOnly(si.nodeScores()));
-        if (allSystemOnly) {
-            String customPrompt = subIntents.stream()
-                    .flatMap(si -> si.nodeScores().stream())
-                    .map(ns -> ns.getNode().getPromptTemplate())
-                    .filter(StrUtil::isNotBlank)
-                    .findFirst()
-                    .orElse(null);
-            StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), history, customPrompt, callback);
+            RetrievalContext ctx = retrievalEngine.retrieve(subIntents, DEFAULT_TOP_K);
+            if (ctx.isEmpty()) {
+                String emptyReply = "未检索到与问题相关的文档内容。";
+                callback.onContent(emptyReply);
+                callback.onComplete();
+                return;
+            }
+
+            // 聚合所有意图用于 prompt 规划
+            IntentGroup mergedGroup = intentResolver.mergeIntentGroup(subIntents);
+
+            StreamCancellationHandle handle = streamLLMResponse(
+                    rewriteResult,
+                    ctx,
+                    mergedGroup,
+                    history,
+                    thinkingEnabled,
+                    callback
+            );
             taskManager.bindHandle(taskId, handle);
-            return;
+        } catch (Exception e) {
+            log.error("流式对话处理异常，会话ID：{}，任务ID：{}", actualConversationId, taskId, e);
+            callback.onError(e);
         }
-
-        RetrievalContext ctx = retrievalEngine.retrieve(subIntents, DEFAULT_TOP_K);
-        if (ctx.isEmpty()) {
-            String emptyReply = "未检索到与问题相关的文档内容。";
-            callback.onContent(emptyReply);
-            callback.onComplete();
-            return;
-        }
-
-        // 聚合所有意图用于 prompt 规划
-        IntentGroup mergedGroup = intentResolver.mergeIntentGroup(subIntents);
-
-        StreamCancellationHandle handle = streamLLMResponse(
-                rewriteResult,
-                ctx,
-                mergedGroup,
-                history,
-                thinkingEnabled,
-                callback
-        );
-        taskManager.bindHandle(taskId, handle);
     }
 
     @Override
@@ -154,7 +158,7 @@ public class RAGChatServiceImpl implements RAGChatService {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt));
         if (CollUtil.isNotEmpty(history)) {
-            messages.addAll(history.subList(0, history.size() - 1));
+            messages.addAll(history);
         }
         messages.add(ChatMessage.user(question));
 

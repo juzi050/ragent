@@ -86,6 +86,21 @@ public interface LLMService {
     String chat(ChatRequest request);
 
     /**
+     * 同步调用（指定模型）
+     * <p>
+     * 说明：
+     * - modelId 为空时等同于 chat(request)，走默认路由
+     * - modelId 不为空时只使用指定模型，仍走路由层的健康检查与 fallback
+     *
+     * @param request ChatRequest 完整配置的请求
+     * @param modelId 指定的模型ID，为空时走默认路由
+     * @return 模型返回的完整回答
+     */
+    default String chat(ChatRequest request, String modelId) {
+        return chat(request);
+    }
+
+    /**
      * 流式调用（简化模式）
      * <p>
      * 说明：

@@ -273,14 +273,16 @@ CREATE TABLE `t_knowledge_document_schedule_exec`
 
 CREATE TABLE `t_message`
 (
-    `id`              bigint(20) NOT NULL COMMENT '主键ID',
-    `conversation_id` varchar(64) NOT NULL COMMENT '会话ID',
-    `user_id`         varchar(64) NOT NULL COMMENT '用户ID',
-    `role`            varchar(32) NOT NULL COMMENT '角色：system/user/assistant',
-    `content`         text        NOT NULL COMMENT '消息内容',
-    `create_time`     datetime DEFAULT NULL COMMENT '创建时间',
-    `update_time`     datetime DEFAULT NULL COMMENT '更新时间',
-    `deleted`         tinyint(4) DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
+    `id`                bigint(20) NOT NULL COMMENT '主键ID',
+    `conversation_id`   varchar(64) NOT NULL COMMENT '会话ID',
+    `user_id`           varchar(64) NOT NULL COMMENT '用户ID',
+    `role`              varchar(32) NOT NULL COMMENT '角色：system/user/assistant',
+    `content`           text        NOT NULL COMMENT '消息内容',
+    `thinking_content`  text        DEFAULT NULL COMMENT '深度思考内容',
+    `thinking_duration` int(11) DEFAULT NULL COMMENT '深度思考耗时（秒）',
+    `create_time`       datetime DEFAULT NULL COMMENT '创建时间',
+    `update_time`       datetime DEFAULT NULL COMMENT '更新时间',
+    `deleted`           tinyint(4) DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
     PRIMARY KEY (`id`),
     KEY               `idx_conversation_user_time` (`conversation_id`,`user_id`,`create_time`),
     KEY               `idx_conversation_summary` (`conversation_id`,`user_id`,`create_time`)

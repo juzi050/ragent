@@ -65,14 +65,16 @@ CREATE INDEX idx_conv_user ON t_conversation_summary (conversation_id, user_id);
 COMMENT ON TABLE t_conversation_summary IS '会话摘要表（与消息表分离存储）';
 
 CREATE TABLE t_message (
-    id              VARCHAR(20)      NOT NULL PRIMARY KEY,
-    conversation_id VARCHAR(20) NOT NULL,
-    user_id         VARCHAR(20) NOT NULL,
-    role            VARCHAR(16) NOT NULL,
-    content         TEXT        NOT NULL,
-    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted         SMALLINT    DEFAULT 0
+    id                VARCHAR(20)      NOT NULL PRIMARY KEY,
+    conversation_id   VARCHAR(20) NOT NULL,
+    user_id           VARCHAR(20) NOT NULL,
+    role              VARCHAR(16) NOT NULL,
+    content           TEXT        NOT NULL,
+    thinking_content  TEXT,
+    thinking_duration INTEGER,
+    create_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted           SMALLINT    DEFAULT 0
 );
 CREATE INDEX idx_conversation_user_time ON t_message (conversation_id, user_id, create_time);
 CREATE INDEX idx_conversation_summary ON t_message (conversation_id, user_id, create_time);
@@ -452,6 +454,8 @@ COMMENT ON COLUMN t_message.conversation_id IS '会话ID';
 COMMENT ON COLUMN t_message.user_id IS '用户ID';
 COMMENT ON COLUMN t_message.role IS '角色：user/assistant';
 COMMENT ON COLUMN t_message.content IS '消息内容';
+COMMENT ON COLUMN t_message.thinking_content IS '深度思考内容';
+COMMENT ON COLUMN t_message.thinking_duration IS '深度思考耗时（秒）';
 COMMENT ON COLUMN t_message.create_time IS '创建时间';
 COMMENT ON COLUMN t_message.update_time IS '更新时间';
 COMMENT ON COLUMN t_message.deleted IS '是否删除 0：正常 1：删除';

@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -75,7 +76,20 @@ public class RoutingLLMService implements LLMService {
     public String chat(ChatRequest request) {
         return executor.executeWithFallback(
                 ModelCapability.CHAT,
-                selector.selectChatCandidates(request.getThinking()),
+                selector.selectChatCandidates(Boolean.TRUE.equals(request.getThinking())),
+                target -> clientsByProvider.get(target.candidate().getProvider()),
+                (client, target) -> client.chat(request, target)
+        );
+    }
+
+    @Override
+    public String chat(ChatRequest request, String modelId) {
+        if (!StringUtils.hasText(modelId)) {
+            return chat(request);
+        }
+        return executor.executeWithFallback(
+                ModelCapability.CHAT,
+                List.of(resolveTarget(modelId, Boolean.TRUE.equals(request.getThinking()))),
                 target -> clientsByProvider.get(target.candidate().getProvider()),
                 (client, target) -> client.chat(request, target)
         );
@@ -84,7 +98,7 @@ public class RoutingLLMService implements LLMService {
     @Override
     @RagTraceNode(name = "llm-stream-routing", type = "LLM_ROUTING")
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback) {
-        List<ModelTarget> targets = selector.selectChatCandidates(request.getThinking());
+        List<ModelTarget> targets = selector.selectChatCandidates(Boolean.TRUE.equals(request.getThinking()));
         if (CollUtil.isEmpty(targets)) {
             throw new RemoteException(STREAM_NO_PROVIDER_MESSAGE);
         }
@@ -101,12 +115,11 @@ public class RoutingLLMService implements LLMService {
                 continue;
             }
 
-            FirstPacketAwaiter awaiter = new FirstPacketAwaiter();
-            ProbeBufferingCallback wrapper = new ProbeBufferingCallback(callback, awaiter);
+            ProbeStreamBridge bridge = new ProbeStreamBridge(callback);
 
             StreamCancellationHandle handle;
             try {
-                handle = client.streamChat(request, wrapper, target);
+                handle = client.streamChat(request, bridge, target);
             } catch (Exception e) {
                 healthStore.markFailure(target.id());
                 lastError = e;
@@ -122,11 +135,9 @@ public class RoutingLLMService implements LLMService {
                 continue;
             }
 
-            FirstPacketAwaiter.Result result = awaitFirstPacket(awaiter, handle, callback);
+            ProbeStreamBridge.ProbeResult result = awaitFirstPacket(bridge, handle, callback);
 
-            // 判断结果
             if (result.isSuccess()) {
-                wrapper.commit();
                 healthStore.markSuccess(target.id());
                 return handle;
             }
@@ -151,11 +162,11 @@ public class RoutingLLMService implements LLMService {
         return client;
     }
 
-    private FirstPacketAwaiter.Result awaitFirstPacket(FirstPacketAwaiter awaiter,
-                                                       StreamCancellationHandle handle,
-                                                       StreamCallback callback) {
+    private ProbeStreamBridge.ProbeResult awaitFirstPacket(ProbeStreamBridge bridge,
+                                                           StreamCancellationHandle handle,
+                                                           StreamCallback callback) {
         try {
-            return awaiter.await(FIRST_PACKET_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return bridge.awaitFirstPacket(FIRST_PACKET_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             handle.cancel();
@@ -165,7 +176,7 @@ public class RoutingLLMService implements LLMService {
         }
     }
 
-    private Throwable buildLastErrorAndLog(FirstPacketAwaiter.Result result, ModelTarget target, String label) {
+    private Throwable buildLastErrorAndLog(ProbeStreamBridge.ProbeResult result, ModelTarget target, String label) {
         switch (result.getType()) {
             case ERROR -> {
                 Throwable error = result.getError() != null
@@ -204,5 +215,12 @@ public class RoutingLLMService implements LLMService {
         );
         callback.onError(finalException);
         return finalException;
+    }
+
+    private ModelTarget resolveTarget(String modelId, boolean deepThinking) {
+        return selector.selectChatCandidates(deepThinking).stream()
+                .filter(target -> modelId.equals(target.id()))
+                .findFirst()
+                .orElseThrow(() -> new RemoteException("Chat 模型不可用: " + modelId));
     }
 }

@@ -54,6 +54,16 @@ public class ConversationMessageVO {
     private String content;
 
     /**
+     * 深度思考内容
+     */
+    private String thinkingContent;
+
+    /**
+     * 深度思考耗时（秒）
+     */
+    private Integer thinkingDuration;
+
+    /**
      * 反馈值：1=点赞，-1=点踩，null=未反馈
      */
     private Integer vote;
