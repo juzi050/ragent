@@ -185,11 +185,19 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
                     log.warn("{} 流式响应解析失败: line={}", provider(), line, parseEx);
                 }
             }
-            if (!cancelled.get() && !completed) {
+            if (cancelled.get()) {
+                log.info("{} 流式响应已被取消", provider());
+                return;
+            }
+            if (!completed) {
                 throw new ModelClientException(provider() + " 流式响应异常结束", ModelClientErrorType.INVALID_RESPONSE, null);
             }
         } catch (Exception e) {
-            callback.onError(e);
+            if (!cancelled.get()) {
+                callback.onError(e);
+            } else {
+                log.info("{} 流式响应取消期间产生异常（可忽略）: {}", provider(), e.getMessage());
+            }
         }
     }
 

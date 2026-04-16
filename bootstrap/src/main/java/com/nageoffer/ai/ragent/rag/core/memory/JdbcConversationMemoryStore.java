@@ -78,6 +78,8 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 .userId(userId)
                 .role(message.getRole().name().toLowerCase())
                 .content(message.getContent())
+                .thinkingContent(message.getThinkingContent())
+                .thinkingDuration(message.getThinkingDuration())
                 .build();
         String messageId = conversationMessageService.addMessage(conversationMessage);
 
@@ -102,8 +104,12 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
         if (record == null || StrUtil.isBlank(record.getContent())) {
             return null;
         }
-        ChatMessage.Role role = ChatMessage.Role.fromString(record.getRole());
-        return new ChatMessage(role, record.getContent());
+        return new ChatMessage(
+                ChatMessage.Role.fromString(record.getRole()),
+                record.getContent(),
+                record.getThinkingContent(),
+                record.getThinkingDuration()
+        );
     }
 
     private List<ChatMessage> normalizeHistory(List<ChatMessage> messages) {

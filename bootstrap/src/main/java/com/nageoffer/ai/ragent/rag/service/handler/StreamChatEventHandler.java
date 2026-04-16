@@ -30,7 +30,6 @@ import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Optional;
 
@@ -49,6 +48,9 @@ public class StreamChatEventHandler implements StreamCallback {
     private final StreamTaskManager taskManager;
     private final boolean sendTitleOnComplete;
     private final StringBuilder answer = new StringBuilder();
+    private final StringBuilder thinking = new StringBuilder();
+    private long thinkingStartMs;
+    private int thinkingDurationSeconds;
 
     /**
      * 使用参数对象构造（推荐）
@@ -107,7 +109,9 @@ public class StreamChatEventHandler implements StreamCallback {
         String content = answer.toString();
         String messageId = null;
         if (StrUtil.isNotBlank(content)) {
-            messageId = memoryService.append(conversationId, userId, ChatMessage.assistant(content));
+            String thinkingContent = thinking.isEmpty() ? null : thinking.toString();
+            ChatMessage message = ChatMessage.assistant(content, thinkingContent, resolveThinkingDuration());
+            messageId = memoryService.append(conversationId, userId, message);
         }
         String title = resolveTitleForEvent();
         return new CompletionPayload(String.valueOf(messageId), title);
@@ -121,6 +125,9 @@ public class StreamChatEventHandler implements StreamCallback {
         if (StrUtil.isBlank(chunk)) {
             return;
         }
+        if (thinkingStartMs > 0 && thinkingDurationSeconds == 0) {
+            thinkingDurationSeconds = Math.max(1, Math.round((System.currentTimeMillis() - thinkingStartMs) / 1000.0f));
+        }
         answer.append(chunk);
         sendChunked(TYPE_RESPONSE, chunk);
     }
@@ -133,6 +140,10 @@ public class StreamChatEventHandler implements StreamCallback {
         if (StrUtil.isBlank(chunk)) {
             return;
         }
+        if (thinkingStartMs == 0) {
+            thinkingStartMs = System.currentTimeMillis();
+        }
+        thinking.append(chunk);
         sendChunked(TYPE_THINK, chunk);
     }
 
@@ -141,10 +152,11 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
-        String messageId = memoryService.append(conversationId, UserContext.getUserId(),
-                ChatMessage.assistant(answer.toString()));
+        String thinkingContent = thinking.isEmpty() ? null : thinking.toString();
+        ChatMessage message = ChatMessage.assistant(answer.toString(), thinkingContent, resolveThinkingDuration());
+        String messageId = memoryService.append(conversationId, userId, message);
         String title = resolveTitleForEvent();
-        String messageIdText = StrUtil.isBlank(messageId)? null : messageId;
+        String messageIdText = StrUtil.isBlank(messageId) ? null : messageId;
         sender.sendEvent(SSEEventType.FINISH.value(), new CompletionPayload(messageIdText, title));
         sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
         taskManager.unregister(taskId);
@@ -179,6 +191,10 @@ public class StreamChatEventHandler implements StreamCallback {
         if (!buffer.isEmpty()) {
             sender.sendEvent(SSEEventType.MESSAGE.value(), new MessageDelta(type, buffer.toString()));
         }
+    }
+
+    private Integer resolveThinkingDuration() {
+        return thinkingDurationSeconds > 0 ? thinkingDurationSeconds : null;
     }
 
     private String resolveTitleForEvent() {

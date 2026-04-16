@@ -50,4 +50,14 @@ public class ConversationMessageBO {
      * 消息内容
      */
     private String content;
+
+    /**
+     * 深度思考内容
+     */
+    private String thinkingContent;
+
+    /**
+     * 深度思考耗时（秒）
+     */
+    private Integer thinkingDuration;
 }

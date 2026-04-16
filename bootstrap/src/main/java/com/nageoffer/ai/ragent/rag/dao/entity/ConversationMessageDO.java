@@ -70,6 +70,16 @@ public class ConversationMessageDO {
     private String content;
 
     /**
+     * 深度思考内容
+     */
+    private String thinkingContent;
+
+    /**
+     * 深度思考耗时（秒）
+     */
+    private Integer thinkingDuration;
+
+    /**
      * 创建时间，自动填充
      */
     @TableField(fill = FieldFill.INSERT)

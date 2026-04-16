@@ -95,15 +95,6 @@ public class RoutingEmbeddingService implements EmbeddingService {
         );
     }
 
-    @Override
-    public int dimension() {
-        ModelTarget target = selector.selectDefaultEmbedding();
-        if (target == null || target.candidate().getDimension() == null) {
-            return 0;
-        }
-        return target.candidate().getDimension();
-    }
-
     private EmbeddingClient resolveClient(ModelTarget target) {
         return clientsByProvider.get(target.candidate().getProvider());
     }
