@@ -157,13 +157,27 @@ class YouComWebSearchChannelTest {
         // news 也在列表内
         assertEquals("https://example.com/news", chunks.get(2).getId());
 
-        // 分数非空且按名次递减（去重/RRF 处理器要求非 null 分数）
+        // 分数非空且按名次递减（无量纲，仅表达通道内相对顺序）
         for (int i = 0; i < chunks.size(); i++) {
             assertNotNull(chunks.get(i).getScore());
             if (i > 0) {
                 assertTrue(chunks.get(i).getScore() < chunks.get(i - 1).getScore());
             }
         }
+    }
+
+    @Test
+    @DisplayName("count 截断：合并 web+news 后按 count 截断为返回总条数上限")
+    void countCapsTotalResults() {
+        SearchChannelProperties properties = defaultProperties("test-key");
+        properties.getChannels().getWebSearch().setCount(2);
+
+        List<RetrievedChunk> chunks = newChannel(properties).search(context("test")).getChunks();
+
+        // SAMPLE_BODY 共 3 条（2 web + 1 news），count=2 截断为 2 条，保留合并顺序中靠前的两条 web
+        assertEquals(2, chunks.size());
+        assertEquals("https://example.com/a", chunks.get(0).getId());
+        assertEquals("https://example.com/b", chunks.get(1).getId());
     }
 
     @Test

@@ -195,6 +195,21 @@ class YouComSearchMcpExecutorTest {
         assertTrue(text(result).contains("未检索到相关结果"));
     }
 
+    @Test
+    @DisplayName("count 截断：合并 web+news 后按 count 截断，仅返回 count 条")
+    void countCapsTotalResults() {
+        // SAMPLE_BODY 共 3 条（2 web + 1 news），count=2 截断为 2 条，保留靠前的两条 web
+        CallToolResult result = executor("test-key").handleCall(
+                request(Map.of("query", "t", "count", 2)));
+
+        String text = text(result);
+        assertFalse(result.isError());
+        assertTrue(text.contains("共 2 条结果"));
+        assertTrue(text.contains("1. 网页结果A"));
+        assertTrue(text.contains("2. 网页结果B"));
+        assertFalse(text.contains("3. "), "count=2 时不应出现第 3 条");
+    }
+
     // ============== helpers ==============
 
     /**

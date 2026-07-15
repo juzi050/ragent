@@ -162,8 +162,8 @@ public class SearchChannelProperties {
         private boolean enabled = false;
 
         /**
-         * 返回结果数量
-         * 默认 5，上限 20（超出会被通道内截断）
+         * 最多返回的结果条数（网页 + 新闻合计）
+         * 默认 5，上限 20；向 You.com 传的是「每 section」数量，合并后由通道统一截断到此值
          */
         private int count = 5;
 

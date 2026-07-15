@@ -26,6 +26,7 @@ import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
@@ -44,14 +45,20 @@ import java.util.Map;
 /**
  * You.com 联网搜索 MCP 工具
  * <p>
- * 基于 You.com Search API（GET https://ydc-index.io/v1/search，X-API-Key 鉴权），
+ * 基于 You.com Search API（GET <a href="https://ydc-index.io/v1/search">...</a>，X-API-Key 鉴权），
  * 返回带来源链接和摘录片段的网页与新闻结果；API Key 从环境变量 YDC_API_KEY 读取
  * <p>
- * 说明：mcp-server 模块保持自包含（不依赖 bootstrap / framework，见各模块 pom），
- * 因此此处内置精简的 You.com HTTP 调用逻辑，与 bootstrap 检索通道中的实现属有意重复
+ * 仅当环境变量 YDC_API_KEY 存在时才注册本工具（{@code @ConditionalOnProperty}）：工具清单是给 LLM
+ * 消费的能力目录，登记一个缺 Key 不可用的工具只会诱导模型调用后失败、污染清单，故「工具存在 ⟺ 可用」，
+ * 与 bootstrap 通道「无 Key 即不启用」对齐（Key 运行中失效的边界仍由 handleCall 内的校验兜底）
+ * <p>
+ * 说明：mcp-server 是零内部依赖、可独立部署的服务（不依赖 bootstrap / framework、与其不在同一 JVM，见各模块 pom），
+ * 因此此处内置精简的 You.com HTTP 调用逻辑，与 bootstrap 的 {@code YouComWebSearchChannel} 属有意重复——
+ * 抽公共模块会打破该隔离，故按「服务级重复」处理；修改 You.com 契约（端点 / 参数 / 响应结构）时两处需同步
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "YDC_API_KEY")
 public class YouComSearchMcpExecutor {
 
     private static final String TOOL_ID = "youcom_search";
@@ -94,7 +101,7 @@ public class YouComSearchMcpExecutor {
 
         properties.put("count", Map.of(
                 "type", "integer",
-                "description", "返回结果数量，默认 5，最大 20",
+                "description", "最多返回的结果条数（网页+新闻合计），默认 5，最大 20",
                 "default", 5
         ));
 
@@ -172,7 +179,7 @@ public class YouComSearchMcpExecutor {
             throw new IllegalStateException("You.com API 返回异常状态码: " + response.statusCode());
         }
 
-        return formatResults(objectMapper.readTree(response.body()));
+        return formatResults(objectMapper.readTree(response.body()), count);
     }
 
     /**
@@ -180,8 +187,11 @@ public class YouComSearchMcpExecutor {
      * <p>
      * 响应中 results.web 与 results.news 均可能缺失；
      * 每条结果中除 url/title/description/snippets 之外的字段均视为可选，防御式读取
+     * <p>
+     * You.com 的 count 是「每 section」语义（web、news 各最多 count 条），合并两段后统一截断到 count，
+     * 使 count 对外表达「返回结果总条数上限」，与直觉一致，也避免多余结果占用 LLM token
      */
-    private String formatResults(JsonNode root) {
+    private String formatResults(JsonNode root, int count) {
         JsonNode results = root.path("results");
         List<JsonNode> items = new ArrayList<>();
         collectItems(items, results.path("web"));
@@ -189,6 +199,9 @@ public class YouComSearchMcpExecutor {
 
         if (items.isEmpty()) {
             return "未检索到相关结果，请尝试更换关键词。";
+        }
+        if (items.size() > count) {
+            items = items.subList(0, count);
         }
 
         StringBuilder sb = new StringBuilder();

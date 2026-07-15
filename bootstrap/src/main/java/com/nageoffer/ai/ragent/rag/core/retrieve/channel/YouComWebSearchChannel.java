@@ -47,6 +47,10 @@ import java.util.List;
  * 优先级排在所有本地通道（意图定向 1 / 关键词 5 / 向量全局 10）之后；
  * 任何失败（网络异常、非 2xx、响应格式异常、超时）只记录 warn 日志并返回空结果，
  * 绝不让联网检索故障影响本地检索链路
+ * <p>
+ * 注：mcp-server 的 {@code YouComSearchMcpExecutor} 内含一份并行的 You.com 调用实现，与此处属有意重复——
+ * mcp-server 是零内部依赖、可独立部署的服务（与本模块不在同一 JVM、面向不同消费者），抽公共模块会打破其隔离，
+ * 故按「服务级重复」处理；修改 You.com 契约（端点 / 参数 / 响应结构）时两处需同步
  */
 @Slf4j
 @Component
@@ -141,7 +145,7 @@ public class YouComWebSearchChannel implements SearchChannel {
                     return emptyResult(startTime);
                 }
                 String body = response.body() != null ? response.body().string() : "";
-                chunks = parseChunks(body);
+                chunks = parseChunks(body, resolveCount(config));
             }
 
             long latency = System.currentTimeMillis() - startTime;
@@ -165,17 +169,21 @@ public class YouComWebSearchChannel implements SearchChannel {
      * <p>
      * 响应结构 {@code {"results": {"web": [...], "news": [...]}}}；
      * news 可能缺失，每条结果中除 url/title/description/snippets 之外的字段均视为可选，防御式读取
+     * <p>
+     * You.com 的 count 是「每 section」语义（web、news 各最多 count 条），这里合并两段后统一
+     * 截断到 maxResults，使 count 对外表达「返回结果总条数上限」，与直觉一致
      */
-    private List<RetrievedChunk> parseChunks(String body) throws Exception {
+    private List<RetrievedChunk> parseChunks(String body, int maxResults) throws Exception {
         JsonNode results = objectMapper.readTree(body).path("results");
 
         List<JsonNode> items = new ArrayList<>();
         collectItems(items, results.path("web"));
         collectItems(items, results.path("news"));
 
-        // 初始分数决策：多通道场景下 FusionPostProcessor(RRF) 只按各通道内名次融合并覆盖分数，
-        // 去重处理器会对分数做数值比较（不能为 null），因此这里给出按名次递减的中性分数 1/(rank+1)，
-        // 仅表达通道内相对顺序，不与向量/BM25 分数做量纲比较；开启 Rerank 时最终由精排模型重新打分
+        // 初始分数为按名次递减的中性分数 1/(rank+1)：无量纲，仅表达通道内相对顺序，不与向量余弦 / BM25
+        // 分数做量纲比较。多通道时 FusionPostProcessor(RRF) 会按各通道名次重算并覆盖此分；单通道且关闭
+        // Rerank 时它保留本通道召回顺序；开启 Rerank 时最终由精排模型重新打分。去重处理器对 null 分数
+        // 已空值安全，此分数非为其而设
         List<RetrievedChunk> chunks = new ArrayList<>();
         for (JsonNode item : items) {
             RetrievedChunk chunk = toChunk(item, chunks.size());
@@ -183,15 +191,17 @@ public class YouComWebSearchChannel implements SearchChannel {
                 chunks.add(chunk);
             }
         }
-        return chunks;
+        return chunks.size() > maxResults ? new ArrayList<>(chunks.subList(0, maxResults)) : chunks;
     }
 
     /**
      * 单条结果映射
      * <p>
-     * {@link RetrievedChunk} 仅有 id/text/score 三个字段（无 metadata 扩展位），
-     * 因此把标题与来源链接直接编排进 text，保证下游拼接 Prompt 时引用信息不丢失；
+     * 把标题、描述、摘录、来源链接编排进 text，保证下游拼接 Prompt 时引用信息不丢失；
      * id 取 url（联网结果的天然唯一键，供去重处理器使用）
+     * <p>
+     * {@link RetrievedChunk} 的 docId/chunkIndex/docName 供本地库 chunk 回表富化，联网结果无库记录，
+     * 富化阶段按 id 查不到会跳过、这些字段保持 null，组装上下文时作为「无标题文档块」渲染，不影响出证据
      */
     private RetrievedChunk toChunk(JsonNode item, int rank) {
         String url = item.path("url").asText("");
