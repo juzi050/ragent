@@ -67,11 +67,6 @@ public class GraphSearchChannel implements SearchChannel {
     }
 
     @Override
-    public int getPriority() {
-        return 3;
-    }
-
-    @Override
     public SearchChannelType getType() {
         return SearchChannelType.GRAPH;
     }

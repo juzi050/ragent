@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 import cn.hutool.crypto.digest.DigestUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
-import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -33,8 +32,8 @@ import java.util.Map;
 /**
  * 去重后置处理器
  * <p>
- * 合并多个通道的结果并去重
- * 当同一个 Chunk 在多个通道中出现时，保留分数最高的
+ * 合并多个通道的结果并按 key 去重：同一 Chunk 多路命中时保留首次出现的实例
+ * 不在此处比较跨通道分数（量纲不可比），最终名次统一交由下游 RRF 融合赋分
  */
 @Slf4j
 @Component
@@ -59,32 +58,15 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
     public List<RetrievedChunk> process(List<RetrievedChunk> chunks,
                                         List<SearchChannelResult> results,
                                         SearchContext context) {
-        // 使用 LinkedHashMap 保持顺序并去重
+        // 按 key 做集合去并：同一 Chunk 多路命中时保留首次出现的实例即可
+        // 不比较各通道原始分——BM25/余弦/图谱分跨量纲不可比，且最终名次由下游 RRF 融合统一赋分
+        // 通道遍历顺序不影响结果：下游融合（RRF 累加）与归因（从 results 重算）均与顺序无关
         Map<String, RetrievedChunk> chunkMap = new LinkedHashMap<>();
-
-        // 按通道优先级排序（优先级高的通道结果优先保留）
-        results.stream()
-                .sorted((r1, r2) -> Integer.compare(
-                        getChannelPriority(r1.getChannelType()),
-                        getChannelPriority(r2.getChannelType())
-                ))
-                .forEach(result -> {
-                    for (RetrievedChunk chunk : result.getChunks()) {
-                        String key = generateChunkKey(chunk);
-
-                        if (!chunkMap.containsKey(key)) {
-                            // 新 Chunk，直接添加
-                            chunkMap.put(key, chunk);
-                        } else {
-                            // 已存在，合并分数（取最高分；score 允许为 null，需空值安全比较）
-                            RetrievedChunk existing = chunkMap.get(key);
-                            if (scoreOf(chunk) > scoreOf(existing)) {
-                                chunkMap.put(key, chunk);
-                            }
-                        }
-                    }
-                });
-
+        for (SearchChannelResult result : results) {
+            for (RetrievedChunk chunk : result.getChunks()) {
+                chunkMap.putIfAbsent(generateChunkKey(chunk), chunk);
+            }
+        }
         return new ArrayList<>(chunkMap.values());
     }
 
@@ -98,25 +80,5 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
         return chunk.getId() != null
                 ? chunk.getId()
                 : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
-    }
-
-    /**
-     * 空值安全取分：score 为 null 时视为最低分，避免装箱 Float 拆箱 NPE
-     */
-    private static float scoreOf(RetrievedChunk chunk) {
-        return chunk.getScore() != null ? chunk.getScore() : Float.NEGATIVE_INFINITY;
-    }
-
-    /**
-     * 获取通道优先级（数字越小优先级越高）
-     * 与各通道 getPriority() 的相对次序保持一致：向量 < 图谱 < 关键词
-     */
-    private int getChannelPriority(SearchChannelType type) {
-        return switch (type) {
-            case VECTOR -> 1;    // 向量为主路，去重占先
-            case GRAPH -> 2;     // 图谱检索次之
-            case KEYWORD -> 3;   // 关键词检索再次
-            default -> 99;
-        };
     }
 }

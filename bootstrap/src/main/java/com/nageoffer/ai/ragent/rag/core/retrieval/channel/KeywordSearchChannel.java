@@ -58,11 +58,6 @@ public class KeywordSearchChannel implements SearchChannel {
     }
 
     @Override
-    public int getPriority() {
-        return 5;
-    }
-
-    @Override
     public SearchChannelType getType() {
         return SearchChannelType.KEYWORD;
     }

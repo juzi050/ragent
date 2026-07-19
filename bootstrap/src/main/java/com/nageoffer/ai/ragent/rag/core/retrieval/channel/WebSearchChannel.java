@@ -89,11 +89,6 @@ public class WebSearchChannel implements SearchChannel {
     }
 
     @Override
-    public int getPriority() {
-        return 20;  // 联网检索排在所有本地通道之后
-    }
-
-    @Override
     public SearchChannelType getType() {
         return SearchChannelType.WEB_SEARCH;
     }

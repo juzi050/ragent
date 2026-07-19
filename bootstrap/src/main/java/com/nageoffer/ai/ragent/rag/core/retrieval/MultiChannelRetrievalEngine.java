@@ -81,9 +81,11 @@ public class MultiChannelRetrievalEngine {
      */
     private List<SearchChannelResult> executeSearchChannels(SearchContext context) {
         // 过滤启用的通道
+        // 按通道类型枚举序做稳定排序：通道并行执行、下游融合（RRF）与归因均与顺序无关，
+        // 这里排序仅为日志/派发顺序稳定可复现，不承载任何检索优先级语义
         List<SearchChannel> enabledChannels = searchChannels.stream()
                 .filter(channel -> channel.isEnabled(context))
-                .sorted(Comparator.comparingInt(SearchChannel::getPriority))
+                .sorted(Comparator.comparingInt(channel -> channel.getType().ordinal()))
                 .toList();
 
         if (enabledChannels.isEmpty()) {

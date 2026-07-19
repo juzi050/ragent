@@ -35,12 +35,6 @@ public interface SearchChannel {
     String getName();
 
     /**
-     * 通道优先级（数字越小优先级越高）
-     * 用于结果合并时的优先级判断
-     */
-    int getPriority();
-
-    /**
      * 是否启用该通道
      *
      * @param context 检索上下文

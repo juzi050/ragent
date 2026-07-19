@@ -67,11 +67,6 @@ public class VectorSearchChannel implements SearchChannel {
     }
 
     @Override
-    public int getPriority() {
-        return 1;  // 向量为主路，最高优先级
-    }
-
-    @Override
     public boolean isEnabled(SearchContext context) {
         // 一条通道一个开关；启用后内部总有一条作用域可走（意图定向或全局兜底）
         return properties.getChannels().getVector().isEnabled();
