@@ -78,6 +78,15 @@ public class ChatMessage {
     }
 
     /**
+     * 消息结束状态
+     */
+    public enum MessageStatus {
+        NORMAL,
+        INTERRUPTED,
+        REJECTED
+    }
+
+    /**
      * 当前消息的角色（系统 / 用户 / 助手）
      */
     private Role role;
@@ -106,6 +115,16 @@ public class ChatMessage {
      * 推荐问题 grounding 片段（仅 ASSISTANT 角色可能携带，随消息落库供推荐追问生成 grounding，不参与模型上下文）
      */
     private List<GroundingChunk> retrievedChunks;
+
+    /**
+     * 当前助手消息对应的用户消息 ID
+     */
+    private String replyToMessageId;
+
+    /**
+     * 消息结束状态
+     */
+    private MessageStatus messageStatus = MessageStatus.NORMAL;
 
     public ChatMessage(Role role, String content) {
         this.role = role;

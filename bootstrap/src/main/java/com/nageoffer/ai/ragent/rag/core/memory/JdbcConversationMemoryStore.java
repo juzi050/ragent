@@ -82,6 +82,8 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 .thinkingDuration(message.getThinkingDuration())
                 .sources(message.getSources())
                 .retrievedChunks(message.getRetrievedChunks())
+                .replyToMessageId(message.getReplyToMessageId())
+                .messageStatus(message.getMessageStatus() == null ? null : message.getMessageStatus().name())
                 .build();
         String messageId = conversationMessageService.addMessage(conversationMessage);
 

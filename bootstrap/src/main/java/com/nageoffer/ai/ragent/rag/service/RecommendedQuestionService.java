@@ -17,22 +17,26 @@
 
 package com.nageoffer.ai.ragent.rag.service;
 
-import java.util.List;
+import com.nageoffer.ai.ragent.rag.dto.RecommendedQuestionsPayload;
 
 /**
  * 推荐追问问题服务
  * <p>
- * 答案完成后的懒加载入口：命中已落库的推荐问题直接返回，否则 FAST 档生成后落库再返回
- * 不在 chat 流式关键路径内，由独立接口按需触发
+ * 推荐问题缓存读取与生成入口
  */
 public interface RecommendedQuestionService {
 
     /**
-     * 获取指定 assistant 消息的推荐追问问题（未生成则现生成并落库）
+     * 读取指定 assistant 消息已生成的推荐追问问题
      *
      * @param messageId 消息ID（须为 assistant 消息）
      * @param userId    用户ID（校验归属）
-     * @return 推荐追问问题列表（可能为空，表示无合适追问）
+     * @return 已缓存的推荐追问结果
      */
-    List<String> getOrGenerate(String messageId, String userId);
+    RecommendedQuestionsPayload getCached(String messageId, String userId);
+
+    /**
+     * 幂等生成指定 assistant 消息的推荐追问问题
+     */
+    RecommendedQuestionsPayload generate(String messageId, String userId);
 }

@@ -81,6 +81,11 @@ public class ConversationMessageVO {
     private List<String> recommendedQuestions;
 
     /**
+     * 消息结束状态：NORMAL=正常完成，INTERRUPTED=用户中断，REJECTED=限流拒绝
+     */
+    private String messageStatus;
+
+    /**
      * 创建时间
      */
     private Date createTime;

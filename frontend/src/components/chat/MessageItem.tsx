@@ -31,6 +31,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
     message.role === "assistant" &&
     message.status !== "streaming" &&
     Boolean(message.id) &&
+    (message.messageStatus ?? "NORMAL") === "NORMAL" &&
     !message.id.startsWith("assistant-");
   const [thinkingExpanded, setThinkingExpanded] = React.useState(false);
   const hasThinking = Boolean(message.thinking && message.thinking.trim().length > 0);

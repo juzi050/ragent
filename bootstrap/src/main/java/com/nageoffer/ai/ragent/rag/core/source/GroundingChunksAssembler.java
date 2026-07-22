@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,14 +33,10 @@ import java.util.Map;
 /**
  * 推荐问题 grounding 片段装配器
  * <p>
- * 把检索片段（KB 命中）按文档去重、取最高分片段、截断文本，产出 grounding 片段列表
- * 按文档去重保证文档多样性（避免追问集中在一篇），取片段全文以保证追问有据可依
+ * 把检索片段（KB 命中）按文档去重、取最高分片段并按字符预算截断
  * <p>
  * 与 {@link SourcesAssembler} 职责分离：后者产出面板/预览用的文档级来源（摘录 100 字），
- * 本类产出推荐生成 grounding 用的片段（全文、上限 8 条），随 assistant 消息落库
- * <p>
- * 不截断文本：rec 生成用的是与答案同一批 chunk，而 rec prompt（chunk + 问题 + 答案，无 system/history）
- * 是答案 prompt 的严格子集——答案路径能承载的 chunk 规模，rec 路径必然也能承载，故无需逐条截断
+ * 本类产出推荐生成 grounding 用的片段（上限 8 条、总计 6000 字符），随 assistant 消息落库
  */
 @Component
 @RequiredArgsConstructor
@@ -49,6 +46,8 @@ public class GroundingChunksAssembler {
      * grounding 片段条数上限 控制存储与 prompt 体积（文档已去重，8 篇足够支撑 3 条追问的发散）
      */
     private static final int MAX_CHUNKS = 8;
+    private static final int MAX_CHUNK_CHARS = 1200;
+    private static final int MAX_TOTAL_CHARS = 6000;
 
     /**
      * 由检索上下文的意图分片装配 grounding 片段列表
@@ -66,25 +65,44 @@ public class GroundingChunksAssembler {
         intentChunks.values().stream()
                 .filter(CollUtil::isNotEmpty)
                 .flatMap(List::stream)
-                .filter(chunk -> chunk != null && StrUtil.isNotBlank(chunk.getDocId()))
+                .filter(chunk -> chunk != null
+                        && StrUtil.isNotBlank(chunk.getDocId())
+                        && StrUtil.isNotBlank(chunk.getText()))
                 .forEach(chunk -> bestByDoc.merge(chunk.getDocId(), chunk,
                         (existing, candidate) -> score(candidate) > score(existing) ? candidate : existing));
         if (bestByDoc.isEmpty()) {
             return List.of();
         }
 
-        // 按最高分降序 取上限；文本取全文不截断（见类注释）
-        return bestByDoc.values().stream()
+        List<RetrievedChunk> candidates = bestByDoc.values().stream()
                 .sorted(Comparator.comparingDouble(GroundingChunksAssembler::score).reversed())
                 .limit(MAX_CHUNKS)
-                .map(chunk -> GroundingChunk.builder()
-                        .docName(StrUtil.blankToDefault(chunk.getDocName(), chunk.getDocId()))
-                        .text(StrUtil.trim(chunk.getText()))
-                        .build())
                 .toList();
+
+        List<GroundingChunk> result = new ArrayList<>(candidates.size());
+        int remaining = MAX_TOTAL_CHARS;
+        for (RetrievedChunk chunk : candidates) {
+            if (remaining <= 0) {
+                break;
+            }
+            String text = truncate(StrUtil.trim(chunk.getText()), Math.min(MAX_CHUNK_CHARS, remaining));
+            if (StrUtil.isBlank(text)) {
+                continue;
+            }
+            result.add(GroundingChunk.builder()
+                    .docName(StrUtil.blankToDefault(chunk.getDocName(), chunk.getDocId()))
+                    .text(text)
+                    .build());
+            remaining -= text.length();
+        }
+        return result;
     }
 
     private static double score(RetrievedChunk chunk) {
         return chunk.getScore() == null ? 0D : chunk.getScore();
+    }
+
+    private static String truncate(String text, int maxChars) {
+        return text.length() <= maxChars ? text : text.substring(0, maxChars);
     }
 }

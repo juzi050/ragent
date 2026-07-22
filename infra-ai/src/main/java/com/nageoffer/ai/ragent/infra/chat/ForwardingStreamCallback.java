@@ -57,6 +57,11 @@ public abstract class ForwardingStreamCallback implements StreamCallback {
     }
 
     @Override
+    public final void onReplyToMessageId(String messageId) {
+        delegate.onReplyToMessageId(messageId);
+    }
+
+    @Override
     public final void onSources(List<SourceRef> sources) {
         delegate.onSources(sources);
     }

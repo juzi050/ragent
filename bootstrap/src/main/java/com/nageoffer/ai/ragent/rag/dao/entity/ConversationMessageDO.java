@@ -104,6 +104,16 @@ public class ConversationMessageDO {
     private List<String> recommendedQuestions;
 
     /**
+     * 当前助手消息对应的用户消息 ID
+     */
+    private String replyToMessageId;
+
+    /**
+     * 消息结束状态：NORMAL=正常完成，INTERRUPTED=用户中断，REJECTED=限流拒绝
+     */
+    private String messageStatus;
+
+    /**
      * 创建时间，自动填充
      */
     @TableField(fill = FieldFill.INSERT)

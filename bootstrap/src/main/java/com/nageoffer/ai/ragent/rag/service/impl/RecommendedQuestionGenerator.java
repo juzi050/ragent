@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.enums.Tier;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import com.nageoffer.ai.ragent.rag.dto.RecommendedQuestionsPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -42,7 +43,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RECOMMENDED_QUEST
 /**
  * 推荐追问问题生成器
  * <p>
- * 答案完成后的 LLM 派生调用（FAST 档），由懒加载接口按需触发，不在 chat 流式关键路径内
+ * 答案完成后的 LLM 派生调用（FAST 档），通过独立接口触发，不在 chat 流式关键路径内
  * 拆为独立 bean 是为了让 Spring AOP 的 {@link RagTraceNode} 拦截生效（同类 self-call 不触发 proxy）
  */
 @Slf4j
@@ -51,36 +52,42 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RECOMMENDED_QUEST
 public class RecommendedQuestionGenerator {
 
     private static final int DEFAULT_RECOMMEND_COUNT = 3;
+    private static final int MAX_QUESTION_CHARS = 1000;
+    private static final int MAX_ANSWER_CHARS = 6000;
+    private static final int MAX_CHUNKS_CHARS = 6000;
+    private static final int MAX_OUTPUT_TOKENS = 256;
+    private static final int MAX_QUESTION_ITEM_CHARS = 200;
 
     private final PromptTemplateLoader promptTemplateLoader;
     private final LLMService llmService;
 
     @RagTraceNode(name = "recommended-question-gen", type = "RECOMMEND_GEN")
-    public List<String> generate(String question, String answer, List<GroundingChunk> chunks) {
-        int count = DEFAULT_RECOMMEND_COUNT;
-        // chunk 文本最后单独替换（不与其余槽同批 fillSlots），避免片段内字面 {question} 等被误伤
-        String prompt = promptTemplateLoader.render(
-                RECOMMENDED_QUESTIONS_PROMPT_PATH,
-                Map.of(
-                        "question", StrUtil.nullToEmpty(question),
-                        "answer", StrUtil.nullToEmpty(answer),
-                        "count", String.valueOf(count)
-                )
-        );
-        prompt = prompt.replace("{chunks}", buildChunksText(chunks));
-
+    public RecommendedQuestionsPayload generate(String question, String answer, List<GroundingChunk> chunks) {
         try {
+            int count = DEFAULT_RECOMMEND_COUNT;
+            // 在实际模型调用边界统一限制输入，避免持久化数据异常导致 prompt 无界增长
+            String prompt = promptTemplateLoader.render(
+                    RECOMMENDED_QUESTIONS_PROMPT_PATH,
+                    Map.of(
+                            "question", truncate(question, MAX_QUESTION_CHARS),
+                            "answer", truncate(answer, MAX_ANSWER_CHARS),
+                            "count", String.valueOf(count)
+                    )
+            );
+            prompt = prompt.replace("{chunks}", buildChunksText(chunks));
+
             ChatRequest request = ChatRequest.builder()
                     .messages(List.of(ChatMessage.user(prompt)))
                     .temperature(0.7D)
                     .topP(0.8D)
+                    .maxTokens(MAX_OUTPUT_TOKENS)
                     .thinking(false)
                     .build();
             String raw = llmService.chat(request, Tier.FAST);
             return parseQuestions(raw, count);
         } catch (Exception ex) {
             log.warn("生成推荐追问问题失败", ex);
-            return List.of();
+            return RecommendedQuestionsPayload.failed();
         }
     }
 
@@ -94,47 +101,59 @@ public class RecommendedQuestionGenerator {
         StringBuilder sb = new StringBuilder();
         int idx = 1;
         for (GroundingChunk chunk : chunks) {
-            sb.append(idx++).append(". 【")
-                    .append(StrUtil.nullToEmpty(chunk.getDocName()))
-                    .append("】")
-                    .append(StrUtil.nullToEmpty(chunk.getText()))
+            if (chunk == null || StrUtil.isBlank(chunk.getText()) || sb.length() >= MAX_CHUNKS_CHARS) {
+                continue;
+            }
+            String prefix = idx++ + ". 【" + StrUtil.nullToEmpty(chunk.getDocName()) + "】";
+            int remaining = MAX_CHUNKS_CHARS - sb.length() - prefix.length() - 1;
+            if (remaining <= 0) {
+                break;
+            }
+            sb.append(prefix)
+                    .append(truncate(chunk.getText(), remaining))
                     .append('\n');
         }
-        return sb.toString().stripTrailing();
+        return sb.isEmpty() ? "（无检索片段，仅依据问答生成）" : sb.toString().stripTrailing();
     }
 
     /**
      * 健壮解析：去代码围栏 -> JSON 数组 -> trim/去空/去重/截断；任何异常或非数组都视为无结果
      */
-    private List<String> parseQuestions(String raw, int count) {
+    private RecommendedQuestionsPayload parseQuestions(String raw, int count) {
         if (StrUtil.isBlank(raw)) {
-            return List.of();
+            return RecommendedQuestionsPayload.failed();
         }
         String stripped = stripCodeFence(raw).trim();
         if (StrUtil.isBlank(stripped)) {
-            return List.of();
+            return RecommendedQuestionsPayload.failed();
         }
         try {
             JSONArray array = JSONUtil.parseArray(stripped);
             LinkedHashSet<String> dedup = new LinkedHashSet<>();
             for (Object item : array) {
-                if (item == null) {
+                if (!(item instanceof CharSequence)) {
                     continue;
                 }
-                String text = StrUtil.trim(item.toString());
+                String text = truncate(StrUtil.trim(item.toString()), MAX_QUESTION_ITEM_CHARS);
                 if (StrUtil.isNotBlank(text)) {
                     dedup.add(text);
                 }
             }
             if (dedup.isEmpty()) {
-                return List.of();
+                return RecommendedQuestionsPayload.empty();
             }
             List<String> result = new ArrayList<>(dedup);
-            return result.size() > count ? result.subList(0, count) : result;
+            return RecommendedQuestionsPayload.success(
+                    result.size() > count ? result.subList(0, count) : result);
         } catch (Exception ex) {
             log.warn("解析推荐追问问题失败，原文：{}", StrUtil.maxLength(raw, 200));
-            return List.of();
+            return RecommendedQuestionsPayload.failed();
         }
+    }
+
+    private String truncate(String value, int maxChars) {
+        String text = StrUtil.nullToEmpty(value);
+        return text.length() <= maxChars ? text : text.substring(0, maxChars);
     }
 
     /**

@@ -18,7 +18,7 @@ import {
   stopTask,
   submitFeedback,
   cancelFeedback,
-  fetchRecommendedQuestions
+  generateRecommendedQuestions
 } from "@/services/chatService";
 import { buildQuery } from "@/utils/helpers";
 import { createStreamResponse } from "@/hooks/useStreamResponse";
@@ -214,7 +214,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         createdAt: item.createTime,
         feedback: mapVoteToFeedback(item.vote),
         status: "done",
-        sources: item.sources || undefined
+        sources: item.sources || undefined,
+        recommended: item.recommendedQuestions ?? undefined,
+        recommendedState: Array.isArray(item.recommendedQuestions) ? "ready" : undefined,
+        messageStatus: item.messageStatus ?? "NORMAL"
       }));
       set({ messages: mapped });
     } catch (error) {
@@ -362,6 +365,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     status: "done",
                     isThinking: false,
                     sources: payload.sources ?? message.sources,
+                    messageStatus: payload.messageStatus ?? "NORMAL",
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -377,6 +381,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     status: "done",
                     isThinking: false,
                     sources: payload.sources ?? message.sources,
+                    messageStatus: payload.messageStatus ?? "NORMAL",
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -384,8 +389,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             )
           }));
         }
-        // 回答完成 拿到真实 messageId 后自动预取推荐追问（懒加载 不阻塞流处理）
-        if (payload.messageId) {
+        // 正常回答完成后后台预取；限流拒绝和中断消息不触发
+        if (payload.messageId && (payload.messageStatus ?? "NORMAL") === "NORMAL") {
           void get().loadRecommended(String(payload.messageId), { auto: true });
         }
       },
@@ -408,6 +413,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               status: "cancelled",
               isThinking: false,
               sources: payload?.sources ?? message.sources,
+              messageStatus: payload?.messageStatus ?? "INTERRUPTED",
               thinkingDuration:
                 message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
             };
@@ -588,8 +594,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       )
     }));
     try {
-      const questions = await fetchRecommendedQuestions(messageId);
-      const list = Array.isArray(questions) ? questions : [];
+      const result = await generateRecommendedQuestions(messageId);
+      if (result.status === "FAILED") {
+        throw new Error("推荐问题生成失败");
+      }
+      const list = result.status === "SUCCESS" ? result.questions : [];
       set((state) => ({
         messages: state.messages.map((message) =>
           message.id === messageId

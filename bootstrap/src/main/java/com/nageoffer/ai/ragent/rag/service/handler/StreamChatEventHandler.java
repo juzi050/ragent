@@ -59,6 +59,7 @@ public class StreamChatEventHandler implements StreamCallback {
     private int thinkingDurationSeconds;
     private List<SourceRef> sources;
     private List<GroundingChunk> groundingChunks;
+    private String replyToMessageId;
 
     /**
      * 使用参数对象构造（推荐）
@@ -122,13 +123,21 @@ public class StreamChatEventHandler implements StreamCallback {
                 ChatMessage message = ChatMessage.assistant(content, thinkingContent, resolveThinkingDuration());
                 message.setSources(sources);
                 message.setRetrievedChunks(groundingChunks);
+                message.setReplyToMessageId(replyToMessageId);
+                message.setMessageStatus(ChatMessage.MessageStatus.INTERRUPTED);
                 messageId = memoryService.append(conversationId, userId, message);
             } catch (Exception e) {
                 log.error("取消时持久化消息失败，conversationId：{}", conversationId, e);
             }
         }
         String title = resolveTitleForEvent();
-        return new CompletionPayload(String.valueOf(messageId), title, sources);
+        String messageIdText = StrUtil.isBlank(messageId) ? null : messageId;
+        return new CompletionPayload(messageIdText, title, sources, ChatMessage.MessageStatus.INTERRUPTED);
+    }
+
+    @Override
+    public void onReplyToMessageId(String messageId) {
+        this.replyToMessageId = messageId;
     }
 
     @Override
@@ -196,13 +205,16 @@ public class StreamChatEventHandler implements StreamCallback {
             ChatMessage message = ChatMessage.assistant(answer.toString(), thinkingContent, resolveThinkingDuration());
             message.setSources(sources);
             message.setRetrievedChunks(groundingChunks);
+            message.setReplyToMessageId(replyToMessageId);
+            message.setMessageStatus(ChatMessage.MessageStatus.NORMAL);
             messageId = memoryService.append(conversationId, userId, message);
         } catch (Exception e) {
             log.error("对话完成时持久化消息失败，conversationId：{}", conversationId, e);
         }
         String title = resolveTitleForEvent();
         String messageIdText = StrUtil.isBlank(messageId) ? null : messageId;
-        sender.sendEvent(SSEEventType.FINISH.value(), new CompletionPayload(messageIdText, title, sources));
+        sender.sendEvent(SSEEventType.FINISH.value(),
+                new CompletionPayload(messageIdText, title, sources, ChatMessage.MessageStatus.NORMAL));
         sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
         taskManager.unregister(taskId);
         sender.complete();

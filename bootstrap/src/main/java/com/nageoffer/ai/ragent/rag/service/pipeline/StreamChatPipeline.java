@@ -101,11 +101,10 @@ public class StreamChatPipeline {
     // ==================== 流水线阶段 ====================
 
     private void loadMemory(StreamChatContext ctx) {
-        List<ChatMessage> history = memoryService.loadAndAppend(
-                ctx.getConversationId(),
-                ctx.getUserId(),
-                ChatMessage.user(ctx.getQuestion())
-        );
+        List<ChatMessage> history = memoryService.load(ctx.getConversationId(), ctx.getUserId());
+        String questionMessageId = memoryService.append(
+                ctx.getConversationId(), ctx.getUserId(), ChatMessage.user(ctx.getQuestion()));
+        ctx.getCallback().onReplyToMessageId(questionMessageId);
         ctx.setHistory(history);
     }
 

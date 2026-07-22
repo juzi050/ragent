@@ -17,11 +17,13 @@
 
 package com.nageoffer.ai.ragent.rag.service.impl;
 
-import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.ConversationMessageMapper;
+import com.nageoffer.ai.ragent.rag.dto.RecommendedQuestionsPayload;
 import com.nageoffer.ai.ragent.rag.service.RecommendedQuestionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,8 +34,7 @@ import java.util.List;
 /**
  * 推荐追问问题服务默认实现
  * <p>
- * 命中已落库推荐问题直接返回；否则取答案 + 前一条用户提问，FAST 档生成后落库再返回；
- * 生成无结果则返回空列表且不落库（允许后续重试，避免缓存投毒）
+ * null 表示未生成，空数组表示已生成但无合适追问，非空数组表示生成成功
  */
 @Slf4j
 @Service
@@ -47,28 +48,41 @@ public class RecommendedQuestionServiceImpl implements RecommendedQuestionServic
     private final RecommendedQuestionGenerator generator;
 
     @Override
-    public List<String> getOrGenerate(String messageId, String userId) {
+    public RecommendedQuestionsPayload getCached(String messageId, String userId) {
         ConversationMessageDO message = loadAssistantMessage(messageId, userId);
-
-        // 缓存命中：已落库的推荐问题直接返回，零模型调用
+        if (isRecommendationDisabled(message)) {
+            return RecommendedQuestionsPayload.empty();
+        }
         List<String> cached = message.getRecommendedQuestions();
-        if (CollUtil.isNotEmpty(cached)) {
-            return cached;
+        if (cached == null) {
+            throw new ClientException("推荐问题尚未生成");
+        }
+        return RecommendedQuestionsPayload.success(cached);
+    }
+
+    @Override
+    public RecommendedQuestionsPayload generate(String messageId, String userId) {
+        ConversationMessageDO message = loadAssistantMessage(messageId, userId);
+        if (isRecommendationDisabled(message)) {
+            return RecommendedQuestionsPayload.empty();
         }
 
-        // 取该答案的前一条用户提问（无则传空，生成器内 nullToEmpty 兜底）
-        String question = loadPreviousQuestion(message);
-
-        List<String> generated = generator.generate(question, message.getContent(), message.getRetrievedChunks());
-        if (CollUtil.isEmpty(generated)) {
-            // 宁缺毋滥：无合适追问则不落库，允许后续重试
-            return List.of();
+        List<String> cached = message.getRecommendedQuestions();
+        if (cached != null) {
+            return RecommendedQuestionsPayload.success(cached);
         }
 
-        // 落库：仅 SET recommended_questions（MP 默认 NOT_NULL 策略只更新非空字段，updateTime 自动填充）
+        String question = loadQuestion(message);
+        RecommendedQuestionsPayload generated =
+                generator.generate(question, message.getContent(), message.getRetrievedChunks());
+        if (generated.status() == RecommendedQuestionsPayload.Status.FAILED) {
+            return generated;
+        }
+
+        // SUCCESS 与 EMPTY 都落库，空数组作为有效的负缓存
         ConversationMessageDO update = new ConversationMessageDO();
         update.setId(message.getId());
-        update.setRecommendedQuestions(generated);
+        update.setRecommendedQuestions(generated.questions());
         conversationMessageMapper.updateById(update);
         return generated;
     }
@@ -91,19 +105,25 @@ public class RecommendedQuestionServiceImpl implements RecommendedQuestionServic
     }
 
     /**
-     * 取同会话中早于该答案的最近一条用户提问
+     * 通过明确的 replyToMessageId 获取当前答案对应的用户提问
      */
-    private String loadPreviousQuestion(ConversationMessageDO message) {
-        ConversationMessageDO previous = conversationMessageMapper.selectOne(
+    private String loadQuestion(ConversationMessageDO message) {
+        if (StrUtil.isBlank(message.getReplyToMessageId())) {
+            return null;
+        }
+        ConversationMessageDO question = conversationMessageMapper.selectOne(
                 Wrappers.lambdaQuery(ConversationMessageDO.class)
+                        .eq(ConversationMessageDO::getId, message.getReplyToMessageId())
                         .eq(ConversationMessageDO::getConversationId, message.getConversationId())
                         .eq(ConversationMessageDO::getUserId, message.getUserId())
                         .eq(ConversationMessageDO::getRole, ROLE_USER)
                         .eq(ConversationMessageDO::getDeleted, 0)
-                        .lt(ConversationMessageDO::getCreateTime, message.getCreateTime())
-                        .orderByDesc(ConversationMessageDO::getCreateTime)
-                        .last("limit 1")
         );
-        return previous == null ? null : previous.getContent();
+        return question == null ? null : question.getContent();
+    }
+
+    private boolean isRecommendationDisabled(ConversationMessageDO message) {
+        return StrUtil.isNotBlank(message.getMessageStatus())
+                && !ChatMessage.MessageStatus.NORMAL.name().equals(message.getMessageStatus());
     }
 }

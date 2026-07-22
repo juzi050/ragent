@@ -43,6 +43,14 @@ import java.util.List;
 public interface StreamCallback {
 
     /**
+     * 记录当前回答对应的用户消息 ID
+     *
+     * @param messageId 用户消息 ID
+     */
+    default void onReplyToMessageId(String messageId) {
+    }
+
+    /**
      * 接收一次增量内容（Delta Token 或部分片段）
      * <p>
      * 说明：

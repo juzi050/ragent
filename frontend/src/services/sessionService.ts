@@ -1,5 +1,5 @@
 import { api } from "@/services/api";
-import type { SourceRef } from "@/types";
+import type { PersistedMessageStatus, SourceRef } from "@/types";
 
 export interface ConversationVO {
   conversationId: string;
@@ -16,6 +16,8 @@ export interface ConversationMessageVO {
   thinkingDuration?: number | null;
   vote: number | null;
   sources?: SourceRef[] | null;
+  recommendedQuestions?: string[] | null;
+  messageStatus?: PersistedMessageStatus | null;
   createTime?: string;
 }
 
