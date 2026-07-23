@@ -48,19 +48,6 @@ public class RecommendedQuestionServiceImpl implements RecommendedQuestionServic
     private final RecommendedQuestionGenerator generator;
 
     @Override
-    public RecommendedQuestionsPayload getCached(String messageId, String userId) {
-        ConversationMessageDO message = loadAssistantMessage(messageId, userId);
-        if (isRecommendationDisabled(message)) {
-            return RecommendedQuestionsPayload.empty();
-        }
-        List<String> cached = message.getRecommendedQuestions();
-        if (cached == null) {
-            throw new ClientException("推荐问题尚未生成");
-        }
-        return RecommendedQuestionsPayload.success(cached);
-    }
-
-    @Override
     public RecommendedQuestionsPayload generate(String messageId, String userId) {
         ConversationMessageDO message = loadAssistantMessage(messageId, userId);
         if (isRecommendationDisabled(message)) {

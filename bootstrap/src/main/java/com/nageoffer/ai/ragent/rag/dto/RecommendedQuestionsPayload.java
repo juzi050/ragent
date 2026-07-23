@@ -25,7 +25,8 @@ import java.util.List;
 public record RecommendedQuestionsPayload(Status status, List<String> questions) {
 
     public RecommendedQuestionsPayload {
-        questions = questions == null ? List.of() : List.copyOf(questions);
+        // 序列化即弃的传输对象，只做 null 归一，不必防御性拷贝
+        questions = questions == null ? List.of() : questions;
     }
 
     public static RecommendedQuestionsPayload success(List<String> questions) {

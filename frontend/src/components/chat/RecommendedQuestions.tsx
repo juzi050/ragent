@@ -1,4 +1,3 @@
-import * as React from "react";
 import { ArrowUpRight, RotateCw, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -18,31 +17,18 @@ export function RecommendedQuestions({ message }: RecommendedQuestionsProps) {
   const isStreaming = useChatStore((state) => state.isStreaming);
   const loadRecommended = useChatStore((state) => state.loadRecommended);
 
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
   const open = Boolean(message.recommendedOpen);
   const state = message.recommendedState;
   const questions = message.recommended ?? [];
-
-  // 展开且内容就绪时把面板滚入可视区 避免最后一条消息展开后被输入区裁掉、只露前几条
-  React.useEffect(() => {
-    if (!open || state !== "ready" || questions.length === 0) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const timer = window.setTimeout(() => {
-      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [open, state, questions.length]);
 
   if (!open) {
     return null;
   }
 
+  // 面板内联展开于消息内，不主动滚动：虚拟列表（react-virtuoso）里调用原生 scrollIntoView 会打乱其滚动记账、
+  // 导致条目错位与空白区域，展开后若超出视口由用户自行下滑
   return (
-    <div
-      ref={containerRef}
-      className="animate-fade-up overflow-hidden rounded-2xl border border-[#EFEFEF] bg-[#FAFAFA] p-1.5"
-    >
+    <div className="animate-fade-up overflow-hidden rounded-2xl border border-[#EFEFEF] bg-[#FAFAFA] p-1.5">
       <div className="flex items-center gap-1.5 px-2.5 pt-1.5 pb-1">
         <Sparkles className="h-3.5 w-3.5 text-[#3B82F6]" />
         <span className="text-xs font-medium text-[#666666]">猜你想问</span>

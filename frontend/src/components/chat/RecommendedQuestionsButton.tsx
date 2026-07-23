@@ -12,8 +12,8 @@ export function RecommendedQuestionsButton({ message }: RecommendedQuestionsButt
   const toggleRecommended = useChatStore((state) => state.toggleRecommended);
 
   const open = Boolean(message.recommendedOpen);
-  // 仅用户可见的加载（已展开）才转圈；回答完成后的后台预取保持静默、按钮如常
-  const spinning = message.recommendedState === "loading" && open;
+  // 生成中转圈；手动触发即展开，loading 必然可见
+  const spinning = message.recommendedState === "loading";
 
   return (
     <button

@@ -27,16 +27,11 @@ import com.nageoffer.ai.ragent.rag.dto.RecommendedQuestionsPayload;
 public interface RecommendedQuestionService {
 
     /**
-     * 读取指定 assistant 消息已生成的推荐追问问题
+     * 幂等生成指定 assistant 消息的推荐追问问题
      *
      * @param messageId 消息ID（须为 assistant 消息）
      * @param userId    用户ID（校验归属）
-     * @return 已缓存的推荐追问结果
-     */
-    RecommendedQuestionsPayload getCached(String messageId, String userId);
-
-    /**
-     * 幂等生成指定 assistant 消息的推荐追问问题
+     * @return 推荐追问结果
      */
     RecommendedQuestionsPayload generate(String messageId, String userId);
 }

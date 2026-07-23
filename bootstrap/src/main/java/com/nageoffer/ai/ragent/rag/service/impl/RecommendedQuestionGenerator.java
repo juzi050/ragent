@@ -65,12 +65,12 @@ public class RecommendedQuestionGenerator {
     public RecommendedQuestionsPayload generate(String question, String answer, List<GroundingChunk> chunks) {
         try {
             int count = DEFAULT_RECOMMEND_COUNT;
-            // 在实际模型调用边界统一限制输入，避免持久化数据异常导致 prompt 无界增长
+            // 唯一的 prompt 输入预算权威：问题/答案/片段全在模型调用边界统一截断，避免与上游装配重复限制、也不受遗留数据影响
             String prompt = promptTemplateLoader.render(
                     RECOMMENDED_QUESTIONS_PROMPT_PATH,
                     Map.of(
-                            "question", truncate(question, MAX_QUESTION_CHARS),
-                            "answer", truncate(answer, MAX_ANSWER_CHARS),
+                            "question", StrUtil.subPre(StrUtil.nullToEmpty(question), MAX_QUESTION_CHARS),
+                            "answer", StrUtil.subPre(StrUtil.nullToEmpty(answer), MAX_ANSWER_CHARS),
                             "count", String.valueOf(count)
                     )
             );
@@ -110,7 +110,7 @@ public class RecommendedQuestionGenerator {
                 break;
             }
             sb.append(prefix)
-                    .append(truncate(chunk.getText(), remaining))
+                    .append(StrUtil.subPre(chunk.getText(), remaining))
                     .append('\n');
         }
         return sb.isEmpty() ? "（无检索片段，仅依据问答生成）" : sb.toString().stripTrailing();
@@ -134,7 +134,7 @@ public class RecommendedQuestionGenerator {
                 if (!(item instanceof CharSequence)) {
                     continue;
                 }
-                String text = truncate(StrUtil.trim(item.toString()), MAX_QUESTION_ITEM_CHARS);
+                String text = StrUtil.subPre(StrUtil.trim(item.toString()), MAX_QUESTION_ITEM_CHARS);
                 if (StrUtil.isNotBlank(text)) {
                     dedup.add(text);
                 }
@@ -149,11 +149,6 @@ public class RecommendedQuestionGenerator {
             log.warn("解析推荐追问问题失败，原文：{}", StrUtil.maxLength(raw, 200));
             return RecommendedQuestionsPayload.failed();
         }
-    }
-
-    private String truncate(String value, int maxChars) {
-        String text = StrUtil.nullToEmpty(value);
-        return text.length() <= maxChars ? text : text.substring(0, maxChars);
     }
 
     /**

@@ -40,6 +40,8 @@ interface ChatState {
   streamingMessageId: string | null;
   cancelRequested: boolean;
   openedSourceMessageId: string | null;
+  // 展开推荐面板后需滚入视口的消息；每次请求都是新对象，供 MessageList 一次性响应
+  recommendReveal: { id: string } | null;
   fetchSessions: () => Promise<void>;
   createSession: () => Promise<string>;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -54,7 +56,7 @@ interface ChatState {
   submitFeedback: (messageId: string, feedback: FeedbackValue) => Promise<void>;
   toggleSourcesPanel: (messageId: string) => void;
   closeSourcesPanel: () => void;
-  loadRecommended: (messageId: string, options?: { auto?: boolean }) => Promise<void>;
+  loadRecommended: (messageId: string) => Promise<void>;
   toggleRecommended: (messageId: string) => void;
 }
 
@@ -103,6 +105,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingMessageId: null,
   cancelRequested: false,
   openedSourceMessageId: null,
+  recommendReveal: null,
   fetchSessions: async () => {
     set({ isLoading: true });
     try {
@@ -389,10 +392,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             )
           }));
         }
-        // 正常回答完成后后台预取；限流拒绝和中断消息不触发
-        if (payload.messageId && (payload.messageStatus ?? "NORMAL") === "NORMAL") {
-          void get().loadRecommended(String(payload.messageId), { auto: true });
-        }
       },
       onCancel: (payload: CompletionPayload) => {
         if (get().streamingMessageId !== assistantId) return;
@@ -574,24 +573,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
   closeSourcesPanel: () => set({ openedSourceMessageId: null }),
-  loadRecommended: async (messageId, options) => {
+  loadRecommended: async (messageId) => {
     const target = get().messages.find((message) => message.id === messageId);
-    // loading/ready 直接返回：自动触发与手动点击去重 同一消息最多请求一次
+    // loading/ready 直接返回：避免同一消息重复请求
     if (!target || target.recommendedState === "loading" || target.recommendedState === "ready") {
       return;
     }
-    const auto = options?.auto ?? false;
+    // 纯手动触发：点击即展开并露出骨架反馈
     set((state) => ({
       messages: state.messages.map((message) =>
         message.id === messageId
-          ? {
-              ...message,
-              recommendedState: "loading",
-              // 手动触发即刻展开（露出骨架反馈）自动触发维持原展开态
-              recommendedOpen: auto ? message.recommendedOpen : true
-            }
+          ? { ...message, recommendedState: "loading", recommendedOpen: true }
           : message
-      )
+      ),
+      recommendReveal: { id: messageId }
     }));
     try {
       const result = await generateRecommendedQuestions(messageId);
@@ -602,47 +597,48 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((state) => ({
         messages: state.messages.map((message) =>
           message.id === messageId
-            ? {
-                ...message,
-                recommended: list,
-                recommendedState: "ready",
-                // 自动预取只热数据不展开（默认收起）手动一律展开 用户中途点击的展开意图亦保留
-                recommendedOpen: auto ? message.recommendedOpen : true
-              }
+            ? { ...message, recommended: list, recommendedState: "ready", recommendedOpen: true }
             : message
-        )
+        ),
+        // 就绪后内容变高，再次请求滚入视口，确保问题不被输入框遮挡
+        recommendReveal: { id: messageId }
       }));
     } catch {
-      // 静默失败：自动触发不打扰用户 手动点击的错误态由按钮区轻提示
+      // 失败置 error 态，由面板内「重试」按钮兜底
       set((state) => ({
         messages: state.messages.map((message) =>
           message.id === messageId
-            ? { ...message, recommendedState: "error", recommendedOpen: auto ? message.recommendedOpen : true }
+            ? { ...message, recommendedState: "error", recommendedOpen: true }
             : message
-        )
+        ),
+        recommendReveal: { id: messageId }
       }));
     }
   },
   toggleRecommended: (messageId) => {
     const target = get().messages.find((message) => message.id === messageId);
     if (!target) return;
-    // 后台预取尚未完成：标记展开 就绪后即可见（loadRecommended 完成时保留该展开意图）
+    // 加载中：保持展开，就绪后原地显示（再次点击不折叠，避免打断）
     if (target.recommendedState === "loading") {
       set((state) => ({
         messages: state.messages.map((message) =>
           message.id === messageId ? { ...message, recommendedOpen: true } : message
-        )
+        ),
+        recommendReveal: { id: messageId }
       }));
       return;
     }
     // 已尝试过（成功或失败）：纯展开/收起切换 失败态的重试走面板内按钮
     if (target.recommendedState === "ready" || target.recommendedState === "error") {
+      const willOpen = !target.recommendedOpen;
       set((state) => ({
         messages: state.messages.map((message) =>
           message.id === messageId
             ? { ...message, recommendedOpen: !message.recommendedOpen }
             : message
-        )
+        ),
+        // 仅在“展开”时滚入视口；收起不滚（保持既有引用避免误触发）
+        recommendReveal: willOpen ? { id: messageId } : state.recommendReveal
       }));
       return;
     }
