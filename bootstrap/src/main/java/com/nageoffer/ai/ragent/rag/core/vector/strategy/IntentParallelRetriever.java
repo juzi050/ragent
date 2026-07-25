@@ -34,15 +34,12 @@ import java.util.concurrent.Executor;
 @Slf4j
 public class IntentParallelRetriever extends AbstractParallelRetriever<IntentParallelRetriever.IntentTask> {
 
-    private final VectorRetrieverService retrieverService;
-
     public record IntentTask(NodeScore nodeScore, int intentTopK) {
     }
 
     public IntentParallelRetriever(VectorRetrieverService retrieverService,
                                    Executor executor) {
-        super(executor);
-        this.retrieverService = retrieverService;
+        super(retrieverService, executor);
     }
 
     /**
@@ -62,7 +59,7 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
     }
 
     @Override
-    protected List<RetrievedChunk> createRetrievalTask(String question, IntentTask task, int ignoredTopK) {
+    protected List<RetrievedChunk> createRetrievalTask(String question, IntentTask task, float[] queryVector, int ignoredTopK) {
         NodeScore nodeScore = task.nodeScore();
         IntentNode node = nodeScore.getNode();
         List<String> collectionNames = node.getEffectiveCollectionNames();
@@ -70,7 +67,8 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
             return List.of();
         }
         try {
-            return retrieverService.retrieve(
+            return retrieverService.retrieveByVector(
+                    queryVector,
                     RetrieveRequest.builder()
                             .collectionNames(collectionNames)
                             .query(question)

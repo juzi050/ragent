@@ -62,6 +62,11 @@ public class MilvusVectorRetrieverService implements VectorRetrieverService {
     }
 
     @Override
+    public float[] embedAndNormalize(String query) {
+        return normalize(toArray(embeddingService.embed(query)));
+    }
+
+    @Override
     public boolean supportsGlobalRetrieval() {
         return true;
     }

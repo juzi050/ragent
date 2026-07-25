@@ -100,6 +100,14 @@ public interface VectorRetrieverService {
     List<RetrievedChunk> retrieveByVector(float[] vector, RetrieveRequest retrieveParam);
 
     /**
+     * 根据自然语言 Query 生成并归一化查询向量。
+     *
+     * @param query 用户自然语言问题
+     * @return 最终用于向量数据库查询的向量
+     */
+    float[] embedAndNormalize(String query);
+
+    /**
      * 是否支持单次全局检索
      * <p>
      * - 返回 true 时，全局检索通道会调用 {@link #retrieveGlobal} 一次性跨库召回

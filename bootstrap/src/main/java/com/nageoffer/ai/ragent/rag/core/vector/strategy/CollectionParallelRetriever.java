@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.rag.core.vector.strategy;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
-import com.nageoffer.ai.ragent.rag.core.vector.strategy.AbstractParallelRetriever;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -33,17 +32,16 @@ import java.util.concurrent.Executor;
 @Slf4j
 public class CollectionParallelRetriever extends AbstractParallelRetriever<String> {
 
-    private final VectorRetrieverService retrieverService;
-
-    public CollectionParallelRetriever(VectorRetrieverService retrieverService, Executor executor) {
-        super(executor);
-        this.retrieverService = retrieverService;
+    public CollectionParallelRetriever(VectorRetrieverService retrieverService,
+                                       Executor executor) {
+        super(retrieverService, executor);
     }
 
     @Override
-    protected List<RetrievedChunk> createRetrievalTask(String question, String collectionName, int topK) {
+    protected List<RetrievedChunk> createRetrievalTask(String question, String collectionName, float[] queryVector, int topK) {
         try {
-            return retrieverService.retrieve(
+            return retrieverService.retrieveByVector(
+                    queryVector,
                     RetrieveRequest.builder()
                             .collectionName(collectionName)
                             .query(question)

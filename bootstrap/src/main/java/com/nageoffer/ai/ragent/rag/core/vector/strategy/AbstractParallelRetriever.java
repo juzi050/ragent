@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.vector.strategy;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -44,9 +45,12 @@ import java.util.concurrent.Executor;
 @Slf4j
 public abstract class AbstractParallelRetriever<T> {
 
+    protected final VectorRetrieverService retrieverService;
     private final Executor executor;
 
-    protected AbstractParallelRetriever(Executor executor) {
+    protected AbstractParallelRetriever(VectorRetrieverService retrieverService,
+                                        Executor executor) {
+        this.retrieverService = retrieverService;
         this.executor = executor;
     }
 
@@ -61,6 +65,8 @@ public abstract class AbstractParallelRetriever<T> {
     public final List<RetrievedChunk> executeParallelRetrieval(String question,
                                                                List<T> targets,
                                                                int topK) {
+        float[] queryVector = retrieverService.embedAndNormalize(question);
+
         // 1. 创建 Future 列表
         record RetrievalFuture<T>(T target, CompletableFuture<List<RetrievedChunk>> future) {
         }
@@ -68,7 +74,7 @@ public abstract class AbstractParallelRetriever<T> {
         List<RetrievalFuture<T>> futures = targets.stream()
                 .map(target -> {
                     CompletableFuture<List<RetrievedChunk>> future = CompletableFuture.supplyAsync(
-                            () -> createRetrievalTask(question, target, topK),
+                            () -> createRetrievalTask(question, target, queryVector, topK),
                             executor
                     );
                     return new RetrievalFuture<>(target, future);
@@ -117,10 +123,11 @@ public abstract class AbstractParallelRetriever<T> {
      *
      * @param question 查询问题
      * @param target   检索目标
+     * @param queryVector 预计算后的查询向量
      * @param topK     TopK
      * @return 检索结果列表
      */
-    protected abstract List<RetrievedChunk> createRetrievalTask(String question, T target, int topK);
+    protected abstract List<RetrievedChunk> createRetrievalTask(String question, T target, float[] queryVector, int topK);
 
     /**
      * 获取目标标识（用于日志）
