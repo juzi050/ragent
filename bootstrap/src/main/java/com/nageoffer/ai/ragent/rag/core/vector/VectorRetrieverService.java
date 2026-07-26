@@ -100,7 +100,7 @@ public interface VectorRetrieverService {
     List<RetrievedChunk> retrieveByVector(float[] vector, RetrieveRequest retrieveParam);
 
     /**
-     * 根据自然语言 Query 生成并归一化查询向量。
+     * 根据自然语言 Query 生成并归一化查询向量
      *
      * @param query 用户自然语言问题
      * @return 最终用于向量数据库查询的向量
