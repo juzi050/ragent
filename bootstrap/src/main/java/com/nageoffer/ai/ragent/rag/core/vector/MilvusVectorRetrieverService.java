@@ -50,7 +50,7 @@ public class MilvusVectorRetrieverService implements VectorRetrieverService {
 
     @Override
     public List<RetrievedChunk> retrieve(RetrieveRequest retrieveParam) {
-        float[] norm = normalize(toArray(embeddingService.embed(retrieveParam.getQuery())));
+        float[] norm = embedAndNormalize(retrieveParam.getQuery());
         return retrieveByVector(norm, retrieveParam);
     }
 
@@ -76,7 +76,7 @@ public class MilvusVectorRetrieverService implements VectorRetrieverService {
         if (collectionNames == null || collectionNames.isEmpty()) {
             return List.of();
         }
-        float[] norm = normalize(toArray(embeddingService.embed(query)));
+        float[] norm = embedAndNormalize(query);
         // 全局检索：单次在共享 collection 内按 collection_name in [...] 跨库召回，替代逐库 fan-out
         String filter = buildCollectionFilter(collectionNames);
         return searchShared(norm, filter, candidateBudget);

@@ -39,8 +39,7 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
 
     @Override
     public List<RetrievedChunk> retrieve(RetrieveRequest request) {
-        List<Float> embedding = embeddingService.embed(request.getQuery());
-        float[] vector = normalize(toArray(embedding));
+        float[] vector = embedAndNormalize(request.getQuery());
         return retrieveByVector(vector, request);
     }
 
@@ -69,8 +68,7 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
         if (collectionNames == null || collectionNames.isEmpty()) {
             return List.of();
         }
-        List<Float> embedding = embeddingService.embed(query);
-        float[] vector = normalize(toArray(embedding));
+        float[] vector = embedAndNormalize(query);
         // 全局检索：单条 SQL 在多库范围内做带总预算的 TopN 召回，替代逐库 fan-out
         return queryByCollections(vector, collectionNames, candidateBudget);
     }

@@ -92,6 +92,7 @@ public interface VectorRetrieverService {
      * <p>
      * 注意：
      * - 调用方负责确保 vector 维度与向量库 schema 保持一致
+     * - 实现不得修改调用方传入的查询向量
      *
      * @param vector        查询向量（如 float[4096]）
      * @param retrieveParam 向量检索请求参数
