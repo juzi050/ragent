@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -67,6 +68,8 @@ class ParallelQueryVectorReuseTest {
 
         ArgumentCaptor<float[]> vectorCaptor = ArgumentCaptor.forClass(float[].class);
         verify(retrieverService, times(2)).retrieveByVector(vectorCaptor.capture(), any(RetrieveRequest.class));
+        assertArrayEquals(normalizedVector, vectorCaptor.getAllValues().get(0));
+        assertArrayEquals(normalizedVector, vectorCaptor.getAllValues().get(1));
         assertSame(normalizedVector, vectorCaptor.getAllValues().get(0));
         assertSame(normalizedVector, vectorCaptor.getAllValues().get(1));
         verify(retrieverService, times(1)).embedAndNormalize("如何申请？");
