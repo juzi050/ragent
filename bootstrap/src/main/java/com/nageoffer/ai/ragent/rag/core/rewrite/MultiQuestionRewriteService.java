@@ -183,6 +183,8 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             }
             if (CollUtil.isEmpty(subs)) {
                 subs = List.of(rewrite);
+            } else {
+                subs = subs.stream().distinct().toList();
             }
             return new RewriteResult(rewrite, subs);
         } catch (Exception e) {
@@ -203,6 +205,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         }
         return parts.stream()
                 .map(s -> s.endsWith("？") || s.endsWith("?") ? s : s + "？")
+                .distinct()
                 .toList();
     }
 }
