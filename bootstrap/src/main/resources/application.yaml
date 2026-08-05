@@ -190,6 +190,8 @@ ai:
     bailian:
       url: https://dashscope.aliyuncs.com
       api-key: ${BAILIAN_API_KEY:}
+      tts:
+        voice: longanyang
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
@@ -287,6 +289,14 @@ ai:
       - id: qwen-vl-max
         provider: bailian
         model: qwen-vl-max
+
+  tts:
+    default-model: cosyvoice-v3-flash
+    candidates:
+      - id: cosyvoice-v3-flash
+        provider: bailian
+        model: cosyvoice-v3-flash
+        timeout-ms: 10000
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:

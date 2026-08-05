@@ -17,22 +17,16 @@
 
 package com.nageoffer.ai.ragent.infra.model;
 
-import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
-
 /**
- * 模型目标配置记录
- * <p>
- * 用于封装 AI 模型的配置信息，包括模型标识、候选模型配置和提供商配置
+ * WS Attempt 的统一流式事件接收器。
  *
- * @param id        模型唯一标识符
- * @param candidate 模型候选配置，包含模型的具体参数和设置
- * @param provider  提供商配置，包含模型提供商的相关信息
- * @param timeoutMs 本次调用的超时预算（毫秒），来自命中的档位或候选模型配置；null 表示走能力默认值
+ * @param <E> 统一输出事件类型
  */
-public record ModelTarget(
-        String id,
-        AIModelProperties.ModelCandidate candidate,
-        AIModelProperties.ProviderConfig provider,
-        Long timeoutMs
-) {
+public interface WsAttemptSink<E> {
+
+    void onEvent(E event);
+
+    void onComplete();
+
+    void onError(Throwable throwable);
 }

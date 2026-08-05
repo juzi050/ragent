@@ -124,6 +124,24 @@ public class ModelHealthStore {
         });
     }
 
+    /**
+     * 释放一次已经放行但尚未产生模型结果的探测调用。
+     *
+     * <p>线程池/连接池容量不足或用户取消不代表模型失败；如果这次调用占用了
+     * HALF_OPEN 名额，需要归还名额，避免模型被永久卡在半开状态。</p>
+     */
+    public void releaseCall(String id) {
+        if (id == null) {
+            return;
+        }
+        healthById.computeIfPresent(id, (k, v) -> {
+            if (v.state == State.HALF_OPEN) {
+                v.halfOpenInFlight = false;
+            }
+            return v;
+        });
+    }
+
     private static class ModelHealth {
         private int consecutiveFailures;
         private long openUntil;

@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
  * 负责根据配置和当前需求选择合适的模型候选列表
  * <p>
  * chat 组走档位机制：任务 → 档位（tier）→ 档位内有序候选；
- * embedding/rerank/vlm 组走 defaultModel + priority 的传统排序
+ * embedding/rerank/vlm/tts 组走 defaultModel + priority 的传统排序
  */
 @Slf4j
 @Component
@@ -94,6 +94,10 @@ public class ModelSelector {
 
     public List<ModelTarget> selectVlmCandidates() {
         return selectCandidates(properties.getVlm());
+    }
+
+    public List<ModelTarget> selectTtsCandidates() {
+        return selectCandidates(properties.getTts());
     }
 
     // ==================== chat：档位机制 ====================
@@ -183,7 +187,7 @@ public class ModelSelector {
         return registry;
     }
 
-    // ==================== embedding/rerank/vlm：defaultModel + priority ====================
+    // ==================== embedding/rerank/vlm/tts：defaultModel + priority ====================
 
     private List<ModelTarget> selectCandidates(AIModelProperties.ModelGroup group) {
         if (group == null || group.getCandidates() == null) {
@@ -214,9 +218,8 @@ public class ModelSelector {
     private List<ModelTarget> buildAvailableTargets(List<AIModelProperties.ModelCandidate> candidates) {
         Map<String, AIModelProperties.ProviderConfig> providers = properties.getProviders();
 
-        // embedding/rerank/vlm 无档位预算，超时走 HTTP 客户端默认
         return candidates.stream()
-                .map(candidate -> buildModelTarget(candidate, providers, null))
+                .map(candidate -> buildModelTarget(candidate, providers, candidate.getTimeoutMs()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }

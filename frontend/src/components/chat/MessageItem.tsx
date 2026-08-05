@@ -3,6 +3,7 @@ import { Brain, ChevronDown } from "lucide-react";
 
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { MessageSpeechButton } from "@/components/chat/MessageSpeechButton";
 import { RecommendedQuestions } from "@/components/chat/RecommendedQuestions";
 import { RecommendedQuestionsButton } from "@/components/chat/RecommendedQuestionsButton";
 import { SourcesButton } from "@/components/chat/SourcesButton";
@@ -111,6 +112,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
           ) : null}
           {showFeedback || hasSources || canRecommend ? (
             <div className="flex items-center gap-2">
+              {showFeedback ? <MessageSpeechButton messageId={message.id} /> : null}
               {showFeedback ? (
                 <FeedbackButtons
                   messageId={message.id}

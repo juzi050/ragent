@@ -62,6 +62,11 @@ public class AIModelProperties {
     private ModelGroup vlm = new ModelGroup();
 
     /**
+     * 文本转语音模型组
+     */
+    private ModelGroup tts = new ModelGroup();
+
+    /**
      * 模型选择策略配置
      */
     private Selection selection = new Selection();
@@ -78,7 +83,7 @@ public class AIModelProperties {
     @Data
     public static class ModelGroup {
         /**
-         * 默认使用的模型标识（embedding/rerank/vlm 使用；chat 已改用 tier）
+         * 默认使用的模型标识（embedding/rerank/vlm/tts 使用；chat 已改用 tier）
          */
         private String defaultModel;
 
@@ -165,6 +170,11 @@ public class AIModelProperties {
         private Integer priority = 100;
 
         /**
+         * 模型首包或单次调用的超时预算（毫秒）
+         */
+        private Long timeoutMs;
+
+        /**
          * 是否启用该模型
          */
         private Boolean enabled = true;
@@ -193,10 +203,28 @@ public class AIModelProperties {
         private String apiKey;
 
         /**
+         * TTS 运营商参数
+         */
+        private TtsProviderConfig tts = new TtsProviderConfig();
+
+        /**
          * 端点映射配置
          * key: 端点类型，value: 端点路径
          */
         private Map<String, String> endpoints = new HashMap<>();
+    }
+
+    /**
+     * TTS 运营商配置类
+     * 定义音色
+     */
+    @Data
+    public static class TtsProviderConfig {
+
+        /**
+         * 音色
+         */
+        private String voice;
     }
 
     /**
