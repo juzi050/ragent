@@ -48,7 +48,8 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<BaiLianTtsTaskParam, B
         super(taskExecutor, new WsExecutorConfig(
                 properties.getWebsocket().getMaxTotalPerModel(),
                 properties.getWebsocket().getMaxIdlePerModel(),
-                properties.getWebsocket().getIdleTimeoutMs()));
+                properties.getWebsocket().getIdleTimeoutMs(),
+                properties.getWebsocket().getEvictionIntervalMs()));
         this.webSocketFactory = webSocketFactory;
         this.websocketConfig = properties.getWebsocket();
     }

@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.infra.voice;
 
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
+import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import org.apache.commons.pool2.BasePooledObjectFactory;
@@ -64,11 +65,15 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
             return new WsConnectionLease<>(pool, connection);
         } catch (NoSuchElementException exception) {
             Throwable cause = exception.getCause();
+            // 池满（无 cause）是容量信号；create 失败（有 cause）是建连故障，透传走正常故障分类
+            if (cause == null) {
+                throw new VoicePoolExhaustedException("Voice 连接池无可用连接，modelId=" + modelId, exception);
+            }
             if (cause instanceof ModelClientException modelClientException) {
                 throw modelClientException;
             }
-            throw new RemoteException("Voice 连接池无可用连接，modelId=" + modelId,
-                    exception, BaseErrorCode.REMOTE_ERROR);
+            throw new ModelClientException("Voice 连接创建失败，modelId=" + modelId,
+                    ModelClientErrorType.PROVIDER_ERROR, null, cause);
         } catch (Exception exception) {
             if (exception instanceof RuntimeException runtimeException) {
                 throw runtimeException;
@@ -101,7 +106,7 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
         // 移除空闲超时的连接
         if (config.idleTimeoutMs() > 0) {
             poolConfig.setMinEvictableIdleTime(Duration.ofMillis(config.idleTimeoutMs()));
-            poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(Math.min(config.idleTimeoutMs(), 30_000L)));
+            poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(config.evictionIntervalMs()));
             poolConfig.setNumTestsPerEvictionRun(1);
         }
 

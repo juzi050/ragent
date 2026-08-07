@@ -194,6 +194,26 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * 消息语音播放合成线程池
+     */
+    @Bean
+    public Executor voicePlaybackExecutor(VoicePlaybackExecutorProperties properties) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                properties.getCorePoolSize(),
+                properties.getMaxPoolSize(),
+                properties.getKeepAliveSeconds(),
+                TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("voice_playback_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        executor.allowCoreThreadTimeOut(true);
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * SSE 排队后执行入口线程池
      */
     @Bean

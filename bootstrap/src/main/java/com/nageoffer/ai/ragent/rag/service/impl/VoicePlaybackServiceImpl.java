@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsCallback;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsRequest;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsService;
@@ -42,6 +43,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Base64;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -58,16 +60,19 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
     private final ConversationMessageMapper conversationMessageMapper;
     private final TtsService ttsService;
     private final StreamTaskManager taskManager;
-    private final Executor chatEntryExecutor;
+    private final AIModelProperties aiModelProperties;
+    private final Executor voicePlaybackExecutor;
 
     public VoicePlaybackServiceImpl(ConversationMessageMapper conversationMessageMapper,
                                     TtsService ttsService,
                                     StreamTaskManager taskManager,
-                                    @Qualifier("chatEntryExecutor") Executor chatEntryExecutor) {
+                                    AIModelProperties aiModelProperties,
+                                    @Qualifier("voicePlaybackExecutor") Executor voicePlaybackExecutor) {
         this.conversationMessageMapper = conversationMessageMapper;
         this.ttsService = ttsService;
         this.taskManager = taskManager;
-        this.chatEntryExecutor = chatEntryExecutor;
+        this.aiModelProperties = aiModelProperties;
+        this.voicePlaybackExecutor = voicePlaybackExecutor;
     }
 
     @Override
@@ -80,14 +85,21 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         if (StrUtil.isBlank(text)) {
             throw new ClientException("消息内容为空，无法播放");
         }
-        log.info("播放任务发起，taskId={}，messageId={}，userId={}，textLength={}",
-                taskId, messageId, userId, text.length());
+        String audioFormat = resolveAudioFormat();
+        log.info("播放任务发起，taskId={}，messageId={}，userId={}，textLength={}，audioFormat={}",
+                taskId, messageId, userId, text.length(), audioFormat);
 
         SseEmitterSender sender = new SseEmitterSender(emitter);
         taskManager.register(taskId, sender, () -> null);
 
-        // 异步合成
-        chatEntryExecutor.execute(() -> synthesizeAndStream(taskId, userId, text, sender));
+        // 独立线程池异步合成
+        try {
+            voicePlaybackExecutor.execute(() -> synthesizeAndStream(taskId, userId, text, audioFormat, sender));
+        } catch (RejectedExecutionException exception) {
+            log.error("播放任务线程池拒绝，taskId={}", taskId, exception);
+            taskManager.unregister(taskId);
+            sender.fail(exception);
+        }
     }
 
     @Override
@@ -95,7 +107,7 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         taskManager.cancel(taskId);
     }
 
-    private void synthesizeAndStream(String taskId, String userId, String text, SseEmitterSender sender) {
+    private void synthesizeAndStream(String taskId, String userId, String text, String audioFormat, SseEmitterSender sender) {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
@@ -103,7 +115,7 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         AtomicBoolean metaLogged = new AtomicBoolean();
         AtomicInteger audioFrameCount = new AtomicInteger();
         AtomicLong audioBytes = new AtomicLong();
-        TtsCallback callback = buildCallback(taskId, sender, metaSent, metaLogged, audioFrameCount, audioBytes);
+        TtsCallback callback = buildCallback(taskId, sender, audioFormat, metaSent, metaLogged, audioFrameCount, audioBytes);
 
         TtsTask task;
         try {
@@ -120,7 +132,7 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         taskManager.bindHandle(taskId, toCancellationHandle(taskId, task));
     }
 
-    private TtsCallback buildCallback(String taskId, SseEmitterSender sender,
+    private TtsCallback buildCallback(String taskId, SseEmitterSender sender, String audioFormat,
                                       AtomicBoolean metaSent, AtomicBoolean metaLogged,
                                       AtomicInteger audioFrameCount, AtomicLong audioBytes) {
         return new TtsCallback() {
@@ -134,7 +146,7 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 }
                 // 首帧前下发音频元信息
                 if (metaSent.compareAndSet(false, true)) {
-                    sender.sendEvent(SSEEventType.AUDIO_META.value(), new AudioMetaPayload(taskId, "mp3", null));
+                    sender.sendEvent(SSEEventType.AUDIO_META.value(), new AudioMetaPayload(taskId, audioFormat, null));
                 }
                 if (metaLogged.compareAndSet(false, true)) {
                     log.info("播放任务首帧下发，taskId={}，frameBytes={}", taskId, opusAudio.length);
@@ -170,13 +182,27 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
     }
 
     private StreamCancellationHandle toCancellationHandle(String taskId, TtsTask task) {
+        // 停止播放归还连接复用 连接异常由连接层销毁
         return () -> {
             try {
-                task.cancelAndInvalidate();
+                task.cancel();
             } catch (RuntimeException exception) {
                 log.warn("播放任务取消失败，taskId={}", taskId, exception);
             }
         };
+    }
+
+    /**
+     * 音频格式由 tts 默认候选配置提供 缺失即失败
+     */
+    private String resolveAudioFormat() {
+        AIModelProperties.ModelGroup tts = aiModelProperties.getTts();
+        return tts.getCandidates().stream()
+                .filter(candidate -> candidate.getId().equals(tts.getDefaultModel()))
+                .map(AIModelProperties.ModelCandidate::getAudioFormat)
+                .filter(StrUtil::isNotBlank)
+                .findFirst()
+                .orElseThrow(() -> new ClientException("TTS 音频格式未配置，defaultModel=" + tts.getDefaultModel()));
     }
 
     /**

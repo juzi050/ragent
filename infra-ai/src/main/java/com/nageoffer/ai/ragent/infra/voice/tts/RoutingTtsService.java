@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
+import com.nageoffer.ai.ragent.infra.voice.VoicePoolExhaustedException;
 import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.extern.slf4j.Slf4j;
@@ -61,9 +62,7 @@ public class RoutingTtsService implements TtsService {
     @Override
     public TtsTask synthesize(TtsRequest request, TtsCallback callback) {
         List<ModelTarget> targets = selector.selectTtsCandidates();
-        log.debug("TTS 候选选择，count={}", targets.size());
         if (targets.isEmpty()) {
-            log.warn("TTS 候选为空，textLength={}", request.text() == null ? 0 : request.text().length());
             throw notifyAllFailed(callback, null);
         }
 
@@ -71,13 +70,10 @@ public class RoutingTtsService implements TtsService {
         for (ModelTarget target : targets) {
             TtsClient client = resolveClient(target);
             if (client == null) {
-                log.warn("TTS 提供商客户端缺失，跳过候选。modelId={}，provider={}",
-                        target.id(), target.candidate().getProvider());
                 continue;
             }
             ModelHealthStore.CallPermit permit = healthStore.allowCall(target.id());
             if (permit == null) {
-                log.warn("TTS 调用许可被拒（熔断/半开），跳过候选。modelId={}", target.id());
                 continue;
             }
 
@@ -85,11 +81,17 @@ public class RoutingTtsService implements TtsService {
             TtsTask task;
             try {
                 task = client.synthesize(request, bridge, target);
+            } catch (VoicePoolExhaustedException exception) {
+                // 容量不足 非模型故障 不记账 继续尝试其他候选
+                bridge.discard();
+                lastError = exception;
+                log.warn("TTS 连接池容量不足，modelId={}", target.id());
+                continue;
             } catch (RuntimeException exception) {
                 bridge.discard();
                 healthStore.markFailure(target.id());
                 lastError = exception;
-                log.warn("TTS 任务启动失败，切换下一个模型。modelId={}，provider={}",
+                log.warn("TTS 任务启动失败，modelId={}，provider={}",
                         target.id(), target.candidate().getProvider(), exception);
                 continue;
             }
@@ -112,8 +114,8 @@ public class RoutingTtsService implements TtsService {
             healthStore.markFailure(target.id());
             lastError = buildFailure(target, result);
             cancelQuietly(task, target);
-            log.warn("TTS 首音频确认失败，切换下一个模型。modelId={}，provider={}，type={}",
-                    target.id(), target.candidate().getProvider(), result.type(), lastError);
+            log.warn("TTS 首音频确认失败，modelId={}，type={}",
+                    target.id(), result.type(), lastError);
         }
 
         throw notifyAllFailed(callback, lastError);

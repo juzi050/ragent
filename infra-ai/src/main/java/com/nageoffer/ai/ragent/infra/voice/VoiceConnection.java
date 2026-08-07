@@ -294,8 +294,9 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     private void completeTask(String taskId, VoiceConnectionState terminalState) {
+        // 幂等 与取消竞态时后到者静默返回 连接归还由先到者负责
         if (!Objects.equals(taskId, currentTaskId.get())) {
-            throw new IllegalStateException("Voice 任务上下文不一致，modelId=" + modelId() + "，taskId=" + taskId);
+            return;
         }
         if (!state.compareAndSet(terminalState, VoiceConnectionState.IDLE)) {
             return;

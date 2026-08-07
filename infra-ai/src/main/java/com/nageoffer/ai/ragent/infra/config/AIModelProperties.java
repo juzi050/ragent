@@ -148,6 +148,11 @@ public class AIModelProperties {
          * 连接空闲驱逐超时（毫秒） 0 表示不驱逐
          */
         private long idleTimeoutMs;
+
+        /**
+         * 空闲驱逐扫描间隔（毫秒）
+         */
+        private long evictionIntervalMs;
     }
 
     /**

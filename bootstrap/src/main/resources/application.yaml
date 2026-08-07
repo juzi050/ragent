@@ -124,6 +124,10 @@ rag:
       core-pool-size: 2
       max-pool-size: 32
       keep-alive-seconds: 60
+    voice-playback:
+      core-pool-size: 2
+      max-pool-size: 8
+      keep-alive-seconds: 60
 
   knowledge:
     schedule:
@@ -314,6 +318,7 @@ ai:
     max-total-per-model: 8
     max-idle-per-model: 8
     idle-timeout-ms: 50000  # 空闲连接驱逐超时
+    eviction-interval-ms: 30000  # 空闲驱逐扫描间隔
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:

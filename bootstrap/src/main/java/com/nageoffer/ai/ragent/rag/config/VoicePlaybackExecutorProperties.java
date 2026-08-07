@@ -15,16 +15,34 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice;
+package com.nageoffer.ai.ragent.rag.config;
+
+import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
 
 /**
- * 单个 modelId 的 WebSocket 连接池容量
- *
- * @param maxTotalPerModel   池最大连接数
- * @param maxIdlePerModel    池最大空闲连接数
- * @param idleTimeoutMs      空闲连接驱逐超时（毫秒） 0 表示不驱逐
- * @param evictionIntervalMs 空闲驱逐扫描间隔（毫秒）
+ * 消息语音播放合成线程池配置
  */
-public record WsExecutorConfig(int maxTotalPerModel, int maxIdlePerModel,
-                               long idleTimeoutMs, long evictionIntervalMs) {
+@Data
+@Configuration
+public class VoicePlaybackExecutorProperties {
+
+    /**
+     * 核心线程数
+     */
+    @Value("${rag.executor.voice-playback.core-pool-size:2}")
+    private Integer corePoolSize;
+
+    /**
+     * 最大线程数
+     */
+    @Value("${rag.executor.voice-playback.max-pool-size:8}")
+    private Integer maxPoolSize;
+
+    /**
+     * 非核心线程空闲存活时间（秒）
+     */
+    @Value("${rag.executor.voice-playback.keep-alive-seconds:60}")
+    private Integer keepAliveSeconds;
 }

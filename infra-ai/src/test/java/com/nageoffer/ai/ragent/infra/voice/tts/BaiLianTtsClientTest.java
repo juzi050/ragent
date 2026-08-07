@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.infra.voice.tts;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
-import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import okhttp3.Protocol;
 import okhttp3.Request;
@@ -37,7 +36,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BaiLianTtsClientTest {
@@ -83,21 +81,6 @@ class BaiLianTtsClientTest {
 
         task.cancel();
         assertEquals(0, factory.closeCount.get());
-        client.close();
-    }
-
-    @Test
-    void rejectsControlEventWithDifferentTaskId() {
-        FakeWebSocketFactory factory = new FakeWebSocketFactory();
-        factory.mismatchedTaskId = true;
-        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
-
-        assertThrows(ModelClientException.class, () -> client.synthesize(
-                new TtsRequest("你好"),
-                new RecordingCallback(),
-                target()
-        ));
-
         client.close();
     }
 
@@ -183,7 +166,6 @@ class BaiLianTtsClientTest {
         private final List<JsonObject> messages = new ArrayList<>();
         private final AtomicInteger closeCount = new AtomicInteger();
         private Request request;
-        private boolean mismatchedTaskId;
 
         @Override
         public WebSocket newWebSocket(Request request, WebSocketListener listener) {
@@ -238,7 +220,7 @@ class BaiLianTtsClientTest {
                 String action = message.getAsJsonObject("header").get("action").getAsString();
                 String taskId = message.getAsJsonObject("header").get("task_id").getAsString();
                 if ("run-task".equals(action)) {
-                    listener.onMessage(this, event(mismatchedTaskId ? "other-task" : taskId, "task-started"));
+                    listener.onMessage(this, event(taskId, "task-started"));
                 } else if ("finish-task".equals(action)) {
                     listener.onMessage(this, ByteString.of(OPUS_AUDIO));
                     listener.onMessage(this, event(taskId, "task-finished"));
