@@ -207,9 +207,11 @@ ai:
     bailian:
       url: https://dashscope.aliyuncs.com
       api-key: ${BAILIAN_API_KEY:}
+      workspace: ${BAILIAN_WORKSPACE:}
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
+        tts: /api-ws/v1/inference
     aihubmix:
       url: https://aihubmix.com
       api-key: ${AIHUBMIX_API_KEY:}
@@ -304,6 +306,16 @@ ai:
       - id: qwen-vl-max
         provider: bailian
         model: qwen-vl-max
+
+  tts:
+    default-model: cosyvoice-v3-flash
+    timeout-ms: 3000
+    candidates:
+      - id: cosyvoice-v3-flash
+        provider: bailian
+        model: cosyvoice-v3-flash
+        priority: 1
+        voice: longxiaochun_v3
 
   websocket:
     connect-timeout-ms: 10000

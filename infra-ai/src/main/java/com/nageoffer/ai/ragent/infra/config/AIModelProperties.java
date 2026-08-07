@@ -62,6 +62,11 @@ public class AIModelProperties {
     private ModelGroup vlm = new ModelGroup();
 
     /**
+     * 语音合成模型组配置
+     */
+    private ModelGroup tts = new ModelGroup();
+
+    /**
      * 模型选择策略配置
      */
     private Selection selection = new Selection();
@@ -93,6 +98,11 @@ public class AIModelProperties {
          * chat 组下退化为"物理模型注册表"：只登记 id→provider/model，档位排序由 tiers 决定
          */
         private List<ModelCandidate> candidates = new ArrayList<>();
+
+        /**
+         * 模型组调用超时预算
+         */
+        private Long timeoutMs;
 
         /**
          * 默认档位名（仅 chat 使用）
@@ -205,6 +215,11 @@ public class AIModelProperties {
          * 是否支持思考链功能
          */
         private Boolean supportsThinking = false;
+
+        /**
+         * 语音类模型默认音色
+         */
+        private String voice;
     }
 
     /**
@@ -223,6 +238,11 @@ public class AIModelProperties {
          * API 密钥
          */
         private String apiKey;
+
+        /**
+         * 供应商工作空间标识
+         */
+        private String workspace;
 
         /**
          * 端点映射配置
