@@ -72,6 +72,11 @@ public class AIModelProperties {
     private Stream stream = new Stream();
 
     /**
+     * WebSocket 连接及任务生命周期配置
+     */
+    private WebSocketConfig websocket = new WebSocketConfig();
+
+    /**
      * 模型组配置类
      * 包含默认模型与候选模型列表
      */
@@ -106,6 +111,33 @@ public class AIModelProperties {
          * key: 档位名（如 fast/standard/deep），value: 该档位的候选与超时
          */
         private Map<String, TierConfig> tiers = new HashMap<>();
+    }
+
+    /**
+     * WebSocket 配置
+     */
+    @Data
+    public static class WebSocketConfig {
+
+        private long connectTimeoutMs;
+
+        private long taskStartTimeoutMs;
+
+        private long taskPacketIdleTimeoutMs;
+
+        private int maxTotalPerModel;
+
+        private int maxIdlePerModel;
+
+        /**
+         * 连接空闲驱逐超时 0 表示不驱逐
+         */
+        private long idleTimeoutMs;
+
+        /**
+         * 空闲驱逐扫描间隔
+         */
+        private long evictionIntervalMs;
     }
 
     /**
