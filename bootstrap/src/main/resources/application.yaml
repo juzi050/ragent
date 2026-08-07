@@ -121,6 +121,11 @@ rag:
         max-pool-size: 32
         keep-alive-seconds: 60
         thread-name-prefix: websocket_lifecycle_executor_
+      playback:
+        core-pool-size: 2
+        max-pool-size: 8
+        keep-alive-seconds: 60
+        thread-name-prefix: voice_playback_executor_
 
   memory:
     history-keep-turns: 8

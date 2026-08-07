@@ -199,6 +199,30 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * 消息语音播放合成线程池
+     */
+    @Bean
+    public Executor voicePlaybackExecutor(
+            @Value("${rag.voice.executors.playback.core-pool-size}") int corePoolSize,
+            @Value("${rag.voice.executors.playback.max-pool-size}") int maxPoolSize,
+            @Value("${rag.voice.executors.playback.keep-alive-seconds}") long keepAliveSeconds,
+            @Value("${rag.voice.executors.playback.thread-name-prefix}") String threadNamePrefix) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                corePoolSize,
+                maxPoolSize,
+                keepAliveSeconds,
+                TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix(threadNamePrefix)
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        executor.allowCoreThreadTimeOut(true);
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * SSE 排队后执行入口线程池
      */
     @Bean
