@@ -174,6 +174,26 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * Voice WebSocket 任务收尾线程池
+     */
+    @Bean
+    public Executor wsLifecycleExecutor(WsLifecycleExecutorProperties properties) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                properties.getCorePoolSize(),
+                properties.getMaxPoolSize(),
+                properties.getKeepAliveSeconds(),
+                TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("ws_lifecycle_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        executor.allowCoreThreadTimeOut(true);
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * SSE 排队后执行入口线程池
      */
     @Bean

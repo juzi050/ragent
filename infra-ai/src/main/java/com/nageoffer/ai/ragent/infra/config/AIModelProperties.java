@@ -62,6 +62,11 @@ public class AIModelProperties {
     private ModelGroup vlm = new ModelGroup();
 
     /**
+     * 语音合成模型组配置
+     */
+    private ModelGroup tts = new ModelGroup();
+
+    /**
      * 模型选择策略配置
      */
     private Selection selection = new Selection();
@@ -70,6 +75,11 @@ public class AIModelProperties {
      * 流式响应配置
      */
     private Stream stream = new Stream();
+
+    /**
+     * WebSocket 连接及任务生命周期配置
+     */
+    private WebSocketConfig websocket = new WebSocketConfig();
 
     /**
      * 模型组配置类
@@ -90,10 +100,20 @@ public class AIModelProperties {
         private List<ModelCandidate> candidates = new ArrayList<>();
 
         /**
+         * 模型组调用超时预算（毫秒），未配置时为 null
+         */
+        private Long timeoutMs;
+
+        /**
          * 默认档位名（仅 chat 使用）
          * 未显式指定 Tier 覆盖时的默认档位（兜底档）
          */
         private String defaultTier;
+
+        /**
+         * TTS 音频输出格式（仅 tts 组使用），如 opus
+         */
+        private String audioFormat;
 
         /**
          * 深度思考档位名（仅 chat 使用）
@@ -106,6 +126,23 @@ public class AIModelProperties {
          * key: 档位名（如 fast/standard/deep），value: 该档位的候选与超时
          */
         private Map<String, TierConfig> tiers = new HashMap<>();
+    }
+
+    /**
+     * WebSocket 配置
+     */
+    @Data
+    public static class WebSocketConfig {
+
+        private long connectTimeoutMs;
+
+        private long taskStartTimeoutMs;
+
+        private long taskFinishTimeoutMs;
+
+        private int maxTotalPerModel;
+
+        private int maxIdlePerModel;
     }
 
     /**
@@ -191,6 +228,11 @@ public class AIModelProperties {
          * API 密钥
          */
         private String apiKey;
+
+        /**
+         * 供应商工作空间标识（仅需要工作空间隔离的供应商使用）
+         */
+        private String workspace;
 
         /**
          * 端点映射配置
