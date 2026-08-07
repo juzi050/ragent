@@ -44,7 +44,13 @@ public enum ModelCapability {
      * 重排序能力
      * 对搜索结果进行重新排序，提高相关性
      */
-    RERANK("Rerank");
+    RERANK("Rerank"),
+
+    /**
+     * 文本转语音能力
+     */
+    TTS("TTS");
+
 
     /**
      * 能力的显示名称
