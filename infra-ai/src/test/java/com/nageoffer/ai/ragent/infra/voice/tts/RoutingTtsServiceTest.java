@@ -44,11 +44,11 @@ class RoutingTtsServiceTest {
         RoutingTtsService service = service(properties, healthStore, List.of(client));
 
         assertThrows(RemoteException.class,
-                () -> service.synthesize(new TtsRequest("第一次", "voice"), new RecordingCallback()));
+                () -> service.synthesize(new TtsRequest("第一次"), new RecordingCallback()));
         assertFalse(healthStore.isUnavailable("tts-model"));
 
         assertThrows(RemoteException.class,
-                () -> service.synthesize(new TtsRequest("第二次", "voice"), new RecordingCallback()));
+                () -> service.synthesize(new TtsRequest("第二次"), new RecordingCallback()));
         assertTrue(healthStore.isUnavailable("tts-model"));
         assertEquals(2, client.attempts.get());
         assertEquals(2, client.invalidatingCancellations.get());
@@ -63,7 +63,7 @@ class RoutingTtsServiceTest {
         RoutingTtsService service = service(properties, healthStore, List.of(primary, backup));
         RecordingCallback callback = new RecordingCallback();
 
-        TtsTask task = service.synthesize(new TtsRequest("你好", "voice"), callback);
+        TtsTask task = service.synthesize(new TtsRequest("你好"), callback);
 
         assertArrayEquals(new byte[]{2, 3}, callback.audioEvents.get(0));
         assertEquals(1, callback.audioEvents.size());

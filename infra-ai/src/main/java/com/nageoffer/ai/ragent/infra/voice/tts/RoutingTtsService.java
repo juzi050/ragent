@@ -61,7 +61,9 @@ public class RoutingTtsService implements TtsService {
     @Override
     public TtsTask synthesize(TtsRequest request, TtsCallback callback) {
         List<ModelTarget> targets = selector.selectTtsCandidates();
+        log.debug("TTS 候选选择，count={}", targets.size());
         if (targets.isEmpty()) {
+            log.warn("TTS 候选为空，textLength={}", request.text() == null ? 0 : request.text().length());
             throw notifyAllFailed(callback, null);
         }
 
@@ -69,10 +71,13 @@ public class RoutingTtsService implements TtsService {
         for (ModelTarget target : targets) {
             TtsClient client = resolveClient(target);
             if (client == null) {
+                log.warn("TTS 提供商客户端缺失，跳过候选。modelId={}，provider={}",
+                        target.id(), target.candidate().getProvider());
                 continue;
             }
             ModelHealthStore.CallPermit permit = healthStore.allowCall(target.id());
             if (permit == null) {
+                log.warn("TTS 调用许可被拒（熔断/半开），跳过候选。modelId={}", target.id());
                 continue;
             }
 

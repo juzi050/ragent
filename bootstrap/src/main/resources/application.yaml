@@ -297,7 +297,6 @@ ai:
         model: qwen-vl-max
 
   tts:
-    audio-format: opus
     default-model: cosyvoice-v3-flash
     timeout-ms: 3000  # 首音频等待超时，超时即切换下一个候选模型
     candidates:
@@ -305,6 +304,8 @@ ai:
         provider: bailian
         model: cosyvoice-v3-flash
         priority: 1
+        voice: longxiaochun_v3  # 默认音色
+        audio-format: mp3  # 音频输出格式
 
   websocket:
     connect-timeout-ms: 10000
@@ -312,6 +313,7 @@ ai:
     task-finish-timeout-ms: 10000
     max-total-per-model: 8
     max-idle-per-model: 8
+    idle-timeout-ms: 50000  # 空闲连接驱逐超时
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:

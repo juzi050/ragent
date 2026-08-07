@@ -20,12 +20,14 @@ package com.nageoffer.ai.ragent.infra.voice.tts;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.http.HttpResponseHelper;
+import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
+import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import com.nageoffer.ai.ragent.infra.voice.WsExecutorConfig;
 import jakarta.annotation.PreDestroy;
 import okhttp3.OkHttpClient;
 import okhttp3.WebSocket;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
@@ -39,24 +41,16 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<BaiLianTtsTaskParam, B
 
     private final WebSocket.Factory webSocketFactory;
     private final AIModelProperties.WebSocketConfig websocketConfig;
-    private final String audioFormat;
 
-    @Autowired
-    public BaiLianTtsClient(@Qualifier("streamingHttpClient") OkHttpClient webSocketFactory,
+    public BaiLianTtsClient(@Qualifier("streamingHttpClient") WebSocket.Factory webSocketFactory,
                             @Qualifier("wsLifecycleExecutor") Executor taskExecutor,
                             AIModelProperties properties) {
-        this(webSocketFactory, taskExecutor, properties.getWebsocket(), properties.getTts().getAudioFormat());
-    }
-
-    BaiLianTtsClient(WebSocket.Factory webSocketFactory,
-                     Executor taskExecutor,
-                     AIModelProperties.WebSocketConfig websocketConfig,
-                     String audioFormat) {
         super(taskExecutor, new WsExecutorConfig(
-                websocketConfig.getMaxTotalPerModel(), websocketConfig.getMaxIdlePerModel()));
+                properties.getWebsocket().getMaxTotalPerModel(),
+                properties.getWebsocket().getMaxIdlePerModel(),
+                properties.getWebsocket().getIdleTimeoutMs()));
         this.webSocketFactory = webSocketFactory;
-        this.websocketConfig = websocketConfig;
-        this.audioFormat = audioFormat;
+        this.websocketConfig = properties.getWebsocket();
     }
 
     @Override
@@ -73,9 +67,29 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<BaiLianTtsTaskParam, B
     protected BaiLianTtsTaskParam buildTaskParam(TtsRequest request, ModelTarget target) {
         return new BaiLianTtsTaskParam(
                 HttpResponseHelper.requireModel(target, "bailian TTS"),
-                request.voice(),
-                audioFormat
+                requireVoice(target),
+                resolveAudioFormat(target)
         );
+    }
+
+    /**
+     * 音色由候选模型配置提供 缺失即失败
+     */
+    private String requireVoice(ModelTarget target) {
+        String voice = target.candidate().getVoice();
+        if (voice == null || voice.isBlank()) {
+            throw new ModelClientException("bailian TTS 未配置默认音色，modelId=" + target.id(),
+                    ModelClientErrorType.INVALID_RESPONSE, null);
+        }
+        return voice;
+    }
+
+    private String resolveAudioFormat(ModelTarget target) {
+        String format = target.candidate().getAudioFormat();
+        if (format == null || format.isBlank()) {
+            format = "opus";
+        }
+        return format;
     }
 
     @Override

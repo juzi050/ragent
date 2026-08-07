@@ -51,6 +51,8 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
 
     private volatile CompletableFuture<Void> taskStarted;
     private volatile CompletableFuture<Void> taskFinished;
+    /** 最近一次收到音频帧的时间戳 */
+    private volatile long lastFrameReceivedMs;
 
     BaiLianTtsConnection(ModelTarget target,
                          WebSocket.Factory webSocketFactory,
@@ -94,6 +96,7 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
         parameters.addProperty("format", param.audioFormat());
 
         JsonObject payload = new JsonObject();
+        payload.addProperty("task_group", "audio");
         payload.addProperty("task", "tts");
         payload.addProperty("function", "SpeechSynthesizer");
         payload.addProperty("model", param.model());
@@ -135,13 +138,37 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
 
     @Override
     protected void awaitTaskTerminated(String taskId) throws Exception {
-        await(taskFinished, websocketConfig.getTaskFinishTimeoutMs());
+        // 帧间空闲超时 音频帧仍到达即不超时
+        long deadline = System.currentTimeMillis() + websocketConfig.getTaskFinishTimeoutMs();
+        while (!taskFinished.isDone()) {
+            long last = lastFrameReceivedMs;
+            if (last > 0) {
+                deadline = Math.max(deadline, last + websocketConfig.getTaskFinishTimeoutMs());
+            }
+            if (System.currentTimeMillis() > deadline) {
+                throw new java.util.concurrent.TimeoutException(
+                        "finish-task 后帧间空闲超时，taskId=" + taskId);
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw interrupted;
+            }
+        }
+        // 等待 taskFinished 完成 透传异常
+        try {
+            taskFinished.get();
+        } catch (java.util.concurrent.ExecutionException exception) {
+            throwCause(exception);
+        }
     }
 
     @Override
     protected void clearTaskContext() {
         taskStarted = null;
         taskFinished = null;
+        lastFrameReceivedMs = 0L;
     }
 
     private JsonObject command(String action, String taskId, JsonObject payload) {
@@ -274,6 +301,8 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
 
         @Override
         public void onMessage(WebSocket webSocket, ByteString bytes) {
+            // 刷新帧活动时间
+            lastFrameReceivedMs = System.currentTimeMillis();
             if (currentCallback() != null) {
                 currentCallback().onPacket(bytes.toByteArray());
             }

@@ -53,7 +53,17 @@ public enum SSEEventType {
     /**
      * 拒绝事件
      */
-    REJECT("reject");
+    REJECT("reject"),
+
+    /**
+     * 音频帧事件
+     */
+    AUDIO("audio"),
+
+    /**
+     * 音频元信息事件
+     */
+    AUDIO_META("audio-meta");
 
     private final String value;
 

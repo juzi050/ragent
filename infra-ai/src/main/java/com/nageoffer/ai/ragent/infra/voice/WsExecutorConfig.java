@@ -19,6 +19,10 @@ package com.nageoffer.ai.ragent.infra.voice;
 
 /**
  * 单个 modelId 的 WebSocket 连接池容量
+ *
+ * @param maxTotalPerModel 池最大连接数
+ * @param maxIdlePerModel  池最大空闲连接数
+ * @param idleTimeoutMs    空闲连接驱逐超时（毫秒） 0 表示不驱逐
  */
-public record WsExecutorConfig(int maxTotalPerModel, int maxIdlePerModel) {
+public record WsExecutorConfig(int maxTotalPerModel, int maxIdlePerModel, long idleTimeoutMs) {
 }

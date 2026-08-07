@@ -33,6 +33,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String, byte[]>>
         implements TtsClient, AutoCloseable {
 
+    /**
+     * continue-task 单次发送的文本长度上限
+     */
+    private static final int CHUNK_MAX_LEN = 80;
+
     private final WsTaskExecutor<P, String, byte[], C> taskExecutor;
 
     protected AbstractWsTtsClient(Executor executor, WsExecutorConfig poolConfig) {
@@ -50,7 +55,10 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
                 () -> !audioReceived.get()
         );
         try {
-            session.send(request.text());
+            // 分块流式发送
+            for (String chunk : splitChunks(request.text())) {
+                session.send(chunk);
+            }
             session.finish().whenComplete((ignored, throwable) -> {
                 if (throwable != null) {
                     streamCallback.onError(throwable);
@@ -61,6 +69,33 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
             session.cancel();
             throw exception;
         }
+    }
+
+    /**
+     * 按句子边界分块 达到长度上限即切分
+     */
+    private java.util.List<String> splitChunks(String text) {
+        if (text == null || text.isEmpty()) {
+            return java.util.List.of("");
+        }
+        java.util.List<String> chunks = new java.util.ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            current.append(c);
+            if (isSentenceBoundary(c) || current.length() >= CHUNK_MAX_LEN) {
+                chunks.add(current.toString());
+                current.setLength(0);
+            }
+        }
+        if (current.length() > 0) {
+            chunks.add(current.toString());
+        }
+        return chunks.stream().filter(chunk -> !chunk.isBlank()).toList();
+    }
+
+    private boolean isSentenceBoundary(char c) {
+        return c == '。' || c == '！' || c == '？' || c == '；' || c == '…' || c == '\n';
     }
 
     protected abstract P buildTaskParam(TtsRequest request, ModelTarget target);

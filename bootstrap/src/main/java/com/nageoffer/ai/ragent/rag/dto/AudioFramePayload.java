@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice.tts;
+package com.nageoffer.ai.ragent.rag.dto;
 
 /**
- * TTS 通用请求 只保留跨供应商稳定参数
+ * 音频帧事件载荷
  */
-public record TtsRequest(String text) {
+public record AudioFramePayload(String base64) {
 }

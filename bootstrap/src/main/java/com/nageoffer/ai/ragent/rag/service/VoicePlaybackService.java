@@ -15,10 +15,22 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice.tts;
+package com.nageoffer.ai.ragent.rag.service;
+
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * TTS 通用请求 只保留跨供应商稳定参数
+ * 消息语音播放服务 将已入库的 assistant 消息合成为音频推送给前端
  */
-public record TtsRequest(String text) {
+public interface VoicePlaybackService {
+
+    /**
+     * 播放指定消息
+     */
+    void play(String messageId, SseEmitter emitter);
+
+    /**
+     * 停止指定播放任务
+     */
+    void stop(String taskId);
 }

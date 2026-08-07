@@ -27,6 +27,7 @@ import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -97,6 +98,12 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
         poolConfig.setBlockWhenExhausted(false);
         poolConfig.setTestOnBorrow(true);
         poolConfig.setTestOnReturn(true);
+        // 移除空闲超时的连接
+        if (config.idleTimeoutMs() > 0) {
+            poolConfig.setMinEvictableIdleTime(Duration.ofMillis(config.idleTimeoutMs()));
+            poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(Math.min(config.idleTimeoutMs(), 30_000L)));
+            poolConfig.setNumTestsPerEvictionRun(1);
+        }
 
         return new GenericObjectPool<>(new BasePooledObjectFactory<>() {
             @Override

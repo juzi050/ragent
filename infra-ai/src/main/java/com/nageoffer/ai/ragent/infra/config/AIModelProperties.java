@@ -143,6 +143,11 @@ public class AIModelProperties {
         private int maxTotalPerModel;
 
         private int maxIdlePerModel;
+
+        /**
+         * 连接空闲驱逐超时（毫秒） 0 表示不驱逐
+         */
+        private long idleTimeoutMs;
     }
 
     /**
@@ -210,6 +215,16 @@ public class AIModelProperties {
          * 是否支持思考链功能
          */
         private Boolean supportsThinking = false;
+
+        /**
+         * 语音类模型默认音色
+         */
+        private String voice;
+
+        /**
+         * 语音类模型音频输出格式
+         */
+        private String audioFormat;
     }
 
     /**

@@ -52,7 +52,7 @@ class WsExecutorTest {
     @BeforeEach
     void setUp() {
         connectionFactory = new TestConnectionFactory();
-        executor = new WsExecutor<>(connectionFactory, new WsExecutorConfig(4, 4));
+        executor = new WsExecutor<>(connectionFactory, new WsExecutorConfig(4, 4, 0));
     }
 
     @AfterEach
@@ -124,7 +124,7 @@ class WsExecutorTest {
     @Test
     void poolExhaustionIsPropagatedToCaller() {
         executor.close();
-        executor = new WsExecutor<>(connectionFactory, new WsExecutorConfig(1, 1));
+        executor = new WsExecutor<>(connectionFactory, new WsExecutorConfig(1, 1, 0));
 
         try (WsConnectionLease<TestVoiceConnection> ignored = executor.acquire(target(MODEL_ID))) {
             assertThrows(RemoteException.class, () -> executor.acquire(target(MODEL_ID)));

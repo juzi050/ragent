@@ -47,11 +47,11 @@ class BaiLianTtsClientTest {
     @Test
     void sendsMinimalCosyVoiceProtocolAndReturnsOpus() {
         FakeWebSocketFactory factory = new FakeWebSocketFactory();
-        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, websocketConfig(), "opus");
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
         RecordingCallback callback = new RecordingCallback();
 
         TtsTask task = client.synthesize(
-                new TtsRequest("你好，世界。", "longxiaochun"),
+                new TtsRequest("你好，世界。"),
                 callback,
                 target()
         );
@@ -62,7 +62,8 @@ class BaiLianTtsClientTest {
         assertEquals(Set.of("text_type", "voice", "format"), parameters.keySet());
         assertEquals("PlainText", parameters.get("text_type").getAsString());
         assertEquals("longxiaochun", parameters.get("voice").getAsString());
-        assertEquals("opus", parameters.get("format").getAsString());
+        assertEquals("mp3", parameters.get("format").getAsString());
+        assertEquals("audio", runPayload.get("task_group").getAsString());
         assertEquals("cosyvoice-v3-flash", runPayload.get("model").getAsString());
 
         assertEquals(List.of("run-task", "continue-task", "finish-task"), factory.actions());
@@ -89,13 +90,39 @@ class BaiLianTtsClientTest {
     void rejectsControlEventWithDifferentTaskId() {
         FakeWebSocketFactory factory = new FakeWebSocketFactory();
         factory.mismatchedTaskId = true;
-        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, websocketConfig(), "opus");
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
 
         assertThrows(ModelClientException.class, () -> client.synthesize(
-                new TtsRequest("你好", "longxiaochun"),
+                new TtsRequest("你好"),
                 new RecordingCallback(),
                 target()
         ));
+
+        client.close();
+    }
+
+    @Test
+    void splitsLongTextIntoSeparateContinueTasks() {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory();
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
+
+        String longText = "第一句话。第二句话。第三句话！第四句话？第五句话；";
+        client.synthesize(new TtsRequest(longText), new RecordingCallback(), target());
+
+        // run-task + 5 个 continue-task + finish-task
+        assertEquals(List.of("run-task", "continue-task", "continue-task", "continue-task",
+                "continue-task", "continue-task", "finish-task"), factory.actions());
+        // 校验每个 continue-task 的文本块
+        assertEquals("第一句话。", factory.messages.get(1)
+                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
+        assertEquals("第二句话。", factory.messages.get(2)
+                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
+        assertEquals("第三句话！", factory.messages.get(3)
+                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
+        assertEquals("第四句话？", factory.messages.get(4)
+                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
+        assertEquals("第五句话；", factory.messages.get(5)
+                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
 
         client.close();
     }
@@ -105,6 +132,8 @@ class BaiLianTtsClientTest {
         candidate.setId("cosyvoice-v3-flash");
         candidate.setProvider("bailian");
         candidate.setModel("cosyvoice-v3-flash");
+        candidate.setVoice("longxiaochun");
+        candidate.setAudioFormat("mp3");
 
         AIModelProperties.ProviderConfig provider = new AIModelProperties.ProviderConfig();
         provider.setUrl("https://dashscope.aliyuncs.com");
@@ -114,14 +143,17 @@ class BaiLianTtsClientTest {
         return new ModelTarget(candidate.getId(), candidate, provider, 1000L);
     }
 
-    private AIModelProperties.WebSocketConfig websocketConfig() {
+    private AIModelProperties properties() {
         AIModelProperties.WebSocketConfig config = new AIModelProperties.WebSocketConfig();
         config.setConnectTimeoutMs(1000L);
         config.setTaskStartTimeoutMs(1000L);
         config.setTaskFinishTimeoutMs(1000L);
         config.setMaxTotalPerModel(1);
         config.setMaxIdlePerModel(1);
-        return config;
+
+        AIModelProperties properties = new AIModelProperties();
+        properties.setWebsocket(config);
+        return properties;
     }
 
     private static final class RecordingCallback implements TtsCallback {

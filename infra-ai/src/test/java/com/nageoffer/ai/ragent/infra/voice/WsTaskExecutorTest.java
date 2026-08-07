@@ -46,7 +46,7 @@ class WsTaskExecutorTest {
         connectionPool = new WsExecutor<>(target -> {
             connection = new TestConnection(target);
             return connection;
-        }, new WsExecutorConfig(1, 1));
+        }, new WsExecutorConfig(1, 1, 0));
         taskExecutor = new WsTaskExecutor<>(connectionPool, Runnable::run);
     }
 
