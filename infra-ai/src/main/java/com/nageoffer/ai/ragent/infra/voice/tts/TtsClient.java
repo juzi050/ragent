@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 
 /**
@@ -26,5 +27,5 @@ public interface TtsClient {
 
     String provider();
 
-    TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target);
+    StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target);
 }

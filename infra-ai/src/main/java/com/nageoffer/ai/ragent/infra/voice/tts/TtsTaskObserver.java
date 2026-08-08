@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+
 /**
  * TTS 任务生命周期观察器
  */
@@ -26,7 +28,7 @@ public interface TtsTaskObserver {
     /**
      * 供应商任务已启动
      */
-    void onTaskStarted(TtsTask task);
+    void onTaskStarted(StreamCancellationHandle handle);
 
     /**
      * 当前调用是否已取消

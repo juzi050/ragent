@@ -184,16 +184,8 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
         return currentTaskId.get();
     }
 
-    public final boolean isIdle() {
-        return isReusable();
-    }
-
     public final boolean isReusable() {
         return state.get() == VoiceConnectionState.IDLE && currentTaskId.get() == null;
-    }
-
-    public final boolean isBroken() {
-        return state.get() == VoiceConnectionState.BROKEN;
     }
 
     /**

@@ -24,11 +24,8 @@ import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
-import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsCallback;
-import com.nageoffer.ai.ragent.infra.voice.tts.TtsRequest;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsService;
-import com.nageoffer.ai.ragent.infra.voice.tts.TtsTask;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsTaskObserver;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.ConversationMessageMapper;
@@ -61,18 +58,15 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
     private final ConversationMessageMapper conversationMessageMapper;
     private final TtsService ttsService;
     private final StreamTaskManager taskManager;
-    private final AIModelProperties aiModelProperties;
     private final Executor voicePlaybackExecutor;
 
     public VoicePlaybackServiceImpl(ConversationMessageMapper conversationMessageMapper,
                                     TtsService ttsService,
                                     StreamTaskManager taskManager,
-                                    AIModelProperties aiModelProperties,
                                     @Qualifier("voicePlaybackExecutor") Executor voicePlaybackExecutor) {
         this.conversationMessageMapper = conversationMessageMapper;
         this.ttsService = ttsService;
         this.taskManager = taskManager;
-        this.aiModelProperties = aiModelProperties;
         this.voicePlaybackExecutor = voicePlaybackExecutor;
     }
 
@@ -86,15 +80,14 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         if (StrUtil.isBlank(text)) {
             throw new ClientException("消息内容为空，无法播放");
         }
-        String audioFormat = resolveAudioFormat();
-        log.info("播放任务发起，taskId={}，messageId={}，userId={}，textLength={}，audioFormat={}",
-                taskId, messageId, userId, text.length(), audioFormat);
+        log.info("播放任务发起，taskId={}，messageId={}，userId={}，textLength={}",
+                taskId, messageId, userId, text.length());
 
         SseEmitterSender sender = new SseEmitterSender(emitter);
         AtomicBoolean taskTerminated = new AtomicBoolean();
         taskManager.register(taskId, sender, () -> null);
         bindEmitterCancellation(taskId, emitter, taskTerminated);
-        sender.sendEvent(SSEEventType.AUDIO_META.value(), new AudioMetaPayload(taskId, audioFormat, null));
+        sender.sendEvent(SSEEventType.AUDIO_META.value(), new AudioMetaPayload(taskId));
 
         // 独立线程池异步合成
         try {
@@ -127,10 +120,10 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 taskId, sender, taskTerminated, metaLogged, audioFrameCount, audioBytes);
 
         try {
-            ttsService.synthesize(new TtsRequest(text), callback, new TtsTaskObserver() {
+            ttsService.synthesize(text, callback, new TtsTaskObserver() {
                 @Override
-                public void onTaskStarted(TtsTask task) {
-                    taskManager.bindHandle(taskId, toCancellationHandle(taskId, task));
+                public void onTaskStarted(StreamCancellationHandle handle) {
+                    taskManager.bindHandle(taskId, wrapCancellationHandle(taskId, handle));
                 }
 
                 @Override
@@ -223,29 +216,16 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         emitter.onError(ignored -> cancel.run());
     }
 
-    private StreamCancellationHandle toCancellationHandle(String taskId, TtsTask task) {
+    private StreamCancellationHandle wrapCancellationHandle(String taskId, StreamCancellationHandle handle) {
         // 取消指令与已在途的 finish-task 存在竞态 停止后不复用当前连接
         return () -> {
             try {
-                task.cancelAndInvalidate();
+                handle.cancel();
                 log.info("播放任务已取消，taskId={}", taskId);
             } catch (RuntimeException exception) {
                 log.warn("播放任务取消失败，taskId={}", taskId, exception);
             }
         };
-    }
-
-    /**
-     * 音频格式由 tts 默认候选配置提供 缺失即失败
-     */
-    private String resolveAudioFormat() {
-        AIModelProperties.ModelGroup tts = aiModelProperties.getTts();
-        return tts.getCandidates().stream()
-                .filter(candidate -> candidate.getId().equals(tts.getDefaultModel()))
-                .map(AIModelProperties.ModelCandidate::getAudioFormat)
-                .filter(StrUtil::isNotBlank)
-                .findFirst()
-                .orElseThrow(() -> new ClientException("TTS 音频格式未配置，defaultModel=" + tts.getDefaultModel()));
     }
 
     /**

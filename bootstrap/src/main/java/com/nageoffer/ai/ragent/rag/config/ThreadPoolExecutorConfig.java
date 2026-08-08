@@ -177,11 +177,11 @@ public class ThreadPoolExecutorConfig {
      * Voice WebSocket 任务收尾线程池
      */
     @Bean
-    public Executor wsLifecycleExecutor(WsLifecycleExecutorProperties properties) {
+    public Executor wsLifecycleExecutor() {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                properties.getCorePoolSize(),
-                properties.getMaxPoolSize(),
-                properties.getKeepAliveSeconds(),
+                2,
+                32,
+                60,
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
                 ThreadFactoryBuilder.create()
@@ -197,11 +197,11 @@ public class ThreadPoolExecutorConfig {
      * 消息语音播放合成线程池
      */
     @Bean
-    public Executor voicePlaybackExecutor(VoicePlaybackExecutorProperties properties) {
+    public Executor voicePlaybackExecutor() {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                properties.getCorePoolSize(),
-                properties.getMaxPoolSize(),
-                properties.getKeepAliveSeconds(),
+                2,
+                8,
+                60,
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
                 ThreadFactoryBuilder.create()

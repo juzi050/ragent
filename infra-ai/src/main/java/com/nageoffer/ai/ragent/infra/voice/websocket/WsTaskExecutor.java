@@ -17,11 +17,13 @@
 
 package com.nageoffer.ai.ragent.infra.voice.websocket;
 
+import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 /**
  * 在池化 WebSocket 连接上启动一次独立任务
@@ -31,21 +33,11 @@ public class WsTaskExecutor<P, I, O, C extends VoiceConnection<P, I, O>> impleme
     private final WsExecutor<C> wsExecutor;
     private final Executor taskExecutor;
 
-    public WsTaskExecutor(VoiceConnectionFactory<C> connectionFactory,
-                          WsExecutorConfig poolConfig,
+    public WsTaskExecutor(Function<ModelTarget, C> connectionFactory,
+                          AIModelProperties.WebSocketConfig poolConfig,
                           Executor taskExecutor) {
-        this(new WsExecutor<>(connectionFactory, poolConfig), taskExecutor);
-    }
-
-    WsTaskExecutor(WsExecutor<C> wsExecutor, Executor taskExecutor) {
-        this.wsExecutor = wsExecutor;
+        this.wsExecutor = new WsExecutor<>(connectionFactory, poolConfig);
         this.taskExecutor = taskExecutor;
-    }
-
-    public WsTaskSession<I> openTask(ModelTarget target,
-                                     P taskParam,
-                                     VoiceStreamCallback<O> callback) {
-        return openTask(target, taskParam, callback, () -> false);
     }
 
     public WsTaskSession<I> openTask(ModelTarget target,

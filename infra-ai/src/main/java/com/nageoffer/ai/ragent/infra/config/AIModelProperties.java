@@ -111,11 +111,6 @@ public class AIModelProperties {
         private String defaultTier;
 
         /**
-         * TTS 音频输出格式（仅 tts 组使用），如 opus
-         */
-        private String audioFormat;
-
-        /**
          * 深度思考档位名（仅 chat 使用）
          * 用户开启深度思考时的目标档位
          */

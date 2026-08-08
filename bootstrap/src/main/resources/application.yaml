@@ -119,16 +119,6 @@ rag:
       max-wait-seconds: 5
       lease-seconds: 300
 
-  executor:
-    ws-lifecycle:
-      core-pool-size: 2
-      max-pool-size: 32
-      keep-alive-seconds: 60
-    voice-playback:
-      core-pool-size: 2
-      max-pool-size: 8
-      keep-alive-seconds: 60
-
   knowledge:
     schedule:
       scan-delay-ms: 10000

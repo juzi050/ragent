@@ -19,10 +19,10 @@ package com.nageoffer.ai.ragent.infra.voice.tts;
 
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
-import com.nageoffer.ai.ragent.infra.voice.websocket.VoicePoolExhaustedException;
 import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.extern.slf4j.Slf4j;
@@ -45,22 +45,19 @@ public class RoutingTtsService implements TtsService {
 
     private final ModelSelector selector;
     private final ModelHealthStore healthStore;
-    private final TtsFirstAudioProbe firstAudioProbe;
     private final Map<String, TtsClient> clientsByProvider;
 
     public RoutingTtsService(ModelSelector selector,
                              ModelHealthStore healthStore,
-                             TtsFirstAudioProbe firstAudioProbe,
                              List<TtsClient> clients) {
         this.selector = selector;
         this.healthStore = healthStore;
-        this.firstAudioProbe = firstAudioProbe;
         this.clientsByProvider = clients.stream()
                 .collect(Collectors.toMap(TtsClient::provider, Function.identity()));
     }
 
     @Override
-    public TtsTask synthesize(TtsRequest request, TtsCallback callback, TtsTaskObserver taskObserver) {
+    public StreamCancellationHandle synthesize(String text, TtsCallback callback, TtsTaskObserver taskObserver) {
         List<ModelTarget> targets = selector.selectTtsCandidates();
         if (targets.isEmpty()) {
             throw notifyAllFailed(callback, null);
@@ -79,24 +76,23 @@ public class RoutingTtsService implements TtsService {
 
             try {
                 BinaryProbeStreamBridge bridge = new BinaryProbeStreamBridge(callback);
-                TtsTask task;
+                StreamCancellationHandle handle;
                 try {
-                    task = client.synthesize(request, bridge, target);
-                } catch (VoicePoolExhaustedException exception) {
-                    // 容量不足 非模型故障 不记账 继续尝试其他候选
-                    bridge.discard();
-                    lastError = exception;
-                    log.warn("TTS 连接池容量不足，modelId={}", target.id());
-                    continue;
+                    handle = client.synthesize(text, bridge, target);
                 } catch (RuntimeException exception) {
                     bridge.discard();
-                    healthStore.markFailure(target.id());
                     lastError = exception;
+                    if (exception instanceof ModelClientException clientException
+                            && clientException.getErrorType() == ModelClientErrorType.CAPACITY_EXHAUSTED) {
+                        log.warn("TTS 连接池容量不足，modelId={}", target.id());
+                        continue;
+                    }
+                    healthStore.markFailure(target.id());
                     log.warn("TTS 任务启动失败，modelId={}，provider={}",
                             target.id(), target.candidate().getProvider(), exception);
                     continue;
                 }
-                if (task == null) {
+                if (handle == null) {
                     bridge.discard();
                     healthStore.markFailure(target.id());
                     lastError = new ModelClientException("TTS 供应商未返回任务句柄，modelId=" + target.id(),
@@ -104,29 +100,29 @@ public class RoutingTtsService implements TtsService {
                     continue;
                 }
 
-                taskObserver.onTaskStarted(task);
+                taskObserver.onTaskStarted(handle);
                 if (taskObserver.isCancelled()) {
                     bridge.discard();
-                    return task;
+                    return handle;
                 }
 
-                BinaryProbeStreamBridge.ProbeResult result = awaitFirstAudio(bridge, task, target);
+                BinaryProbeStreamBridge.ProbeResult result = awaitFirstAudio(bridge, handle, target);
                 if (taskObserver.isCancelled()) {
                     bridge.discard();
-                    return task;
+                    return handle;
                 }
                 if (result.isSuccess()) {
                     healthStore.markSuccess(target.id());
                     bridge.commit();
-                    return task;
+                    return handle;
                 }
 
                 bridge.discard();
                 healthStore.markFailure(target.id());
                 lastError = buildFailure(target, result);
-                cancelQuietly(task, target);
+                cancelQuietly(handle, target);
                 log.warn("TTS 首音频确认失败，modelId={}，type={}",
-                        target.id(), result.type(), lastError);
+                        target.id(), result.getType(), lastError);
             } finally {
                 // 用户取消、连接池耗尽等中性退出不记模型故障，但必须归还半开探测名额
                 healthStore.releaseHalfOpenPermit(permit);
@@ -146,26 +142,26 @@ public class RoutingTtsService implements TtsService {
     }
 
     private BinaryProbeStreamBridge.ProbeResult awaitFirstAudio(BinaryProbeStreamBridge bridge,
-                                                                TtsTask task,
+                                                                StreamCancellationHandle handle,
                                                                 ModelTarget target) {
         try {
             long timeoutMs = target.timeoutMs();
-            return firstAudioProbe.awaitFirstAudio(bridge, timeoutMs, TimeUnit.MILLISECONDS);
+            return bridge.awaitFirstAudio(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             RemoteException interrupted = new RemoteException(
                     "TTS 首音频等待被中断", exception, BaseErrorCode.REMOTE_ERROR);
             bridge.onError(interrupted);
             bridge.commit();
-            cancelQuietly(task, target);
+            cancelQuietly(handle, target);
             throw interrupted;
         }
     }
 
     private Throwable buildFailure(ModelTarget target, BinaryProbeStreamBridge.ProbeResult result) {
-        return switch (result.type()) {
-            case ERROR -> result.error() != null
-                    ? result.error()
+        return switch (result.getType()) {
+            case ERROR -> result.getError() != null
+                    ? result.getError()
                     : new ModelClientException("TTS 流式任务失败，modelId=" + target.id(),
                     ModelClientErrorType.PROVIDER_ERROR, null);
             case TIMEOUT -> new ModelClientException("TTS 首音频超时，modelId=" + target.id(),
@@ -186,9 +182,9 @@ public class RoutingTtsService implements TtsService {
         return failure;
     }
 
-    private void cancelQuietly(TtsTask task, ModelTarget target) {
+    private void cancelQuietly(StreamCancellationHandle handle, ModelTarget target) {
         try {
-            task.cancelAndInvalidate();
+            handle.cancel();
         } catch (RuntimeException exception) {
             log.warn("TTS 失败候选取消异常，modelId={}，provider={}",
                     target.id(), target.candidate().getProvider(), exception);

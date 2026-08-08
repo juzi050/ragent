@@ -9,8 +9,6 @@ const STOP_URL = `${API_BASE_URL}/rag/v3/voice/stop`;
 
 interface AudioMetaPayload {
   taskId?: string;
-  format?: string;
-  voice?: string;
 }
 
 // 播放器单例 全局只播一条

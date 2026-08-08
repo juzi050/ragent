@@ -17,10 +17,11 @@
 
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnection;
 import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceStreamCallback;
-import com.nageoffer.ai.ragent.infra.voice.websocket.WsExecutorConfig;
 import com.nageoffer.ai.ragent.infra.voice.websocket.WsTaskExecutor;
 import com.nageoffer.ai.ragent.infra.voice.websocket.WsTaskSession;
 
@@ -40,23 +41,23 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
 
     private final WsTaskExecutor<P, String, byte[], C> taskExecutor;
 
-    protected AbstractWsTtsClient(Executor executor, WsExecutorConfig poolConfig) {
+    protected AbstractWsTtsClient(Executor executor, AIModelProperties.WebSocketConfig poolConfig) {
         this.taskExecutor = new WsTaskExecutor<>(this::createConnection, poolConfig, executor);
     }
 
     @Override
-    public final TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+    public final StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
         AtomicBoolean audioReceived = new AtomicBoolean();
         VoiceStreamCallback<byte[]> streamCallback = adaptCallback(callback, target, audioReceived);
         WsTaskSession<String> session = taskExecutor.openTask(
                 target,
-                buildTaskParam(request, target),
+                buildTaskParam(target),
                 streamCallback,
                 () -> !audioReceived.get()
         );
         try {
             // 分块流式发送
-            for (String chunk : splitChunks(request.text())) {
+            for (String chunk : splitChunks(text)) {
                 session.send(chunk);
             }
             session.finish().whenComplete((ignored, throwable) -> {
@@ -64,7 +65,7 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
                     streamCallback.onError(throwable);
                 }
             });
-            return wrapTask(session);
+            return session::cancelAndInvalidate;
         } catch (RuntimeException exception) {
             session.cancel();
             throw exception;
@@ -98,9 +99,9 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
         return c == '。' || c == '！' || c == '？' || c == '；' || c == '…' || c == '\n';
     }
 
-    protected abstract P buildTaskParam(TtsRequest request, ModelTarget target);
+    protected abstract P buildTaskParam(ModelTarget target);
 
-    protected abstract C createConnection(ModelTarget target) throws Exception;
+    protected abstract C createConnection(ModelTarget target);
 
     protected byte[] convertAudio(byte[] providerAudio, ModelTarget target) {
         return providerAudio;
@@ -126,20 +127,6 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
             @Override
             protected void onTaskError(Throwable throwable) {
                 callback.onError(throwable);
-            }
-        };
-    }
-
-    private TtsTask wrapTask(WsTaskSession<String> session) {
-        return new TtsTask() {
-            @Override
-            public void cancel() {
-                session.cancel();
-            }
-
-            @Override
-            public void cancelAndInvalidate() {
-                session.cancelAndInvalidate();
             }
         };
     }

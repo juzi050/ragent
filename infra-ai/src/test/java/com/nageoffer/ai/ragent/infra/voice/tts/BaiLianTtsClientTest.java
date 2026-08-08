@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.infra.voice.tts;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import okhttp3.Protocol;
@@ -53,8 +54,8 @@ class BaiLianTtsClientTest {
         BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
         RecordingCallback callback = new RecordingCallback();
 
-        TtsTask task = client.synthesize(
-                new TtsRequest("你好，世界。"),
+        StreamCancellationHandle handle = client.synthesize(
+                "你好，世界。",
                 callback,
                 target()
         );
@@ -84,7 +85,7 @@ class BaiLianTtsClientTest {
         assertArrayEquals(FakeWebSocketFactory.OPUS_AUDIO, callback.audio);
         assertTrue(callback.completed);
 
-        task.cancel();
+        handle.cancel();
         assertEquals(0, factory.closeCount.get());
         client.close();
     }
@@ -95,7 +96,7 @@ class BaiLianTtsClientTest {
         BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
 
         String longText = "第一句话。第二句话。第三句话！第四句话？第五句话；";
-        client.synthesize(new TtsRequest(longText), new RecordingCallback(), target());
+        client.synthesize(longText, new RecordingCallback(), target());
 
         // run-task + 5 个 continue-task + finish-task
         assertEquals(List.of("run-task", "continue-task", "continue-task", "continue-task",
@@ -123,10 +124,10 @@ class BaiLianTtsClientTest {
         RecordingCallback callback = new RecordingCallback();
 
         try {
-            TtsTask task = client.synthesize(new TtsRequest("取消播放"), callback, target());
+            StreamCancellationHandle handle = client.synthesize("取消播放", callback, target());
             assertTrue(factory.awaitNormalFinish());
 
-            task.cancelAndInvalidate();
+            handle.cancel();
 
             JsonObject cancel = factory.messages.get(factory.messages.size() - 1);
             assertEquals("finish-task", cancel.getAsJsonObject("header").get("action").getAsString());
@@ -150,10 +151,10 @@ class BaiLianTtsClientTest {
         BaiLianTtsClient client = new BaiLianTtsClient(factory, executor, properties());
 
         try {
-            TtsTask task = client.synthesize(new TtsRequest("取消播放"), new RecordingCallback(), target());
+            StreamCancellationHandle handle = client.synthesize("取消播放", new RecordingCallback(), target());
             assertTrue(factory.awaitNormalFinish());
 
-            task.cancel();
+            handle.cancel();
 
             assertEquals(1, factory.closeCount.get());
         } finally {

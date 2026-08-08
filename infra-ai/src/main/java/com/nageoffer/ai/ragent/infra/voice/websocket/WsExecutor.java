@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.infra.voice.websocket;
 
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
+import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
@@ -33,19 +34,20 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 /**
  * Voice WebSocket 执行器，按 modelId 管理连接池
  */
 public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {
 
-    private final VoiceConnectionFactory<C> connectionFactory;
-    private final WsExecutorConfig config;
+    private final Function<ModelTarget, C> connectionFactory;
+    private final AIModelProperties.WebSocketConfig config;
     private final Map<String, GenericObjectPool<C>> poolsByModelId = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    public WsExecutor(VoiceConnectionFactory<C> connectionFactory,
-                      WsExecutorConfig config) {
+    public WsExecutor(Function<ModelTarget, C> connectionFactory,
+                      AIModelProperties.WebSocketConfig config) {
         this.connectionFactory = connectionFactory;
         this.config = config;
     }
@@ -57,7 +59,7 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
         if (closed.get()) {
             throw new IllegalStateException("Voice 连接池已关闭");
         }
-        String modelId = resolvePoolKey(target);
+        String modelId = target.id();
 
         GenericObjectPool<C> pool = poolsByModelId.computeIfAbsent(modelId, ignored -> createPool(target));
         try {
@@ -67,7 +69,8 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
             Throwable cause = exception.getCause();
             // 池满（无 cause）是容量信号；create 失败（有 cause）是建连故障，透传走正常故障分类
             if (cause == null) {
-                throw new VoicePoolExhaustedException("Voice 连接池无可用连接，modelId=" + modelId, exception);
+                throw new ModelClientException("Voice 连接池无可用连接，modelId=" + modelId,
+                        ModelClientErrorType.CAPACITY_EXHAUSTED, null, exception);
             }
             if (cause instanceof ModelClientException modelClientException) {
                 throw modelClientException;
@@ -83,30 +86,18 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
         }
     }
 
-    public int getIdleCount(String modelId) {
-        return poolsByModelId.get(modelId).getNumIdle();
-    }
-
-    public int getActiveCount(String modelId) {
-        return poolsByModelId.get(modelId).getNumActive();
-    }
-
-    private String resolvePoolKey(ModelTarget target) {
-        return target.id();
-    }
-
     private GenericObjectPool<C> createPool(ModelTarget target) {
         String modelId = target.id();
         GenericObjectPoolConfig<C> poolConfig = new GenericObjectPoolConfig<>();
-        poolConfig.setMaxTotal(config.maxTotalPerModel());
-        poolConfig.setMaxIdle(config.maxIdlePerModel());
+        poolConfig.setMaxTotal(config.getMaxTotalPerModel());
+        poolConfig.setMaxIdle(config.getMaxIdlePerModel());
         poolConfig.setBlockWhenExhausted(false);
         poolConfig.setTestOnBorrow(true);
         poolConfig.setTestOnReturn(true);
         // 移除空闲超时的连接
-        if (config.idleTimeoutMs() > 0) {
-            poolConfig.setMinEvictableIdleTime(Duration.ofMillis(config.idleTimeoutMs()));
-            poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(config.evictionIntervalMs()));
+        if (config.getIdleTimeoutMs() > 0) {
+            poolConfig.setMinEvictableIdleTime(Duration.ofMillis(config.getIdleTimeoutMs()));
+            poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(config.getEvictionIntervalMs()));
             poolConfig.setNumTestsPerEvictionRun(1);
         }
 
@@ -115,7 +106,7 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
             public C create() throws Exception {
                 C connection = null;
                 try {
-                    connection = connectionFactory.create(target);
+                    connection = connectionFactory.apply(target);
                     if (!modelId.equals(connection.modelId())) {
                         throw new IllegalStateException("VoiceConnection 的 modelId 与连接池不一致，pool="
                                 + modelId + "，connection=" + connection.modelId());

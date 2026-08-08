@@ -49,13 +49,6 @@ public final class WsTaskSession<I> {
     <P, O, C extends VoiceConnection<P, I, O>> WsTaskSession(String taskId,
                                                              C connection,
                                                              WsConnectionLease<C> lease,
-                                                             Executor taskExecutor) {
-        this(taskId, connection, lease, taskExecutor, () -> false);
-    }
-
-    <P, O, C extends VoiceConnection<P, I, O>> WsTaskSession(String taskId,
-                                                             C connection,
-                                                             WsConnectionLease<C> lease,
                                                              Executor taskExecutor,
                                                              BooleanSupplier invalidateOnFinish) {
         this.taskId = taskId;
@@ -63,10 +56,6 @@ public final class WsTaskSession<I> {
         this.lease = lease;
         this.taskExecutor = taskExecutor;
         this.invalidateOnFinish = invalidateOnFinish;
-    }
-
-    public String taskId() {
-        return taskId;
     }
 
     public void send(I input) {
@@ -132,12 +121,6 @@ public final class WsTaskSession<I> {
             } else {
                 completion.completeExceptionally(failure);
             }
-        }
-    }
-
-    public boolean isActive() {
-        synchronized (lifecycleLock) {
-            return lifecycle != Lifecycle.RELEASED;
         }
     }
 

@@ -20,5 +20,5 @@ package com.nageoffer.ai.ragent.rag.dto;
 /**
  * 音频元信息事件载荷
  */
-public record AudioMetaPayload(String taskId, String format, String voice) {
+public record AudioMetaPayload(String taskId) {
 }

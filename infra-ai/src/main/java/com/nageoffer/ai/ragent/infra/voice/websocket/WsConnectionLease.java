@@ -46,10 +46,6 @@ public final class WsConnectionLease<C extends VoiceConnection<?, ?, ?>> impleme
         invalidated.set(true);
     }
 
-    public boolean isInvalidated() {
-        return invalidated.get();
-    }
-
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) {

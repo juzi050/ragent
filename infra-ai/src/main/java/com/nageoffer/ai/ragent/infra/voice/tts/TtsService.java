@@ -17,15 +17,17 @@
 
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+
 /**
  * 文本转语音服务
  */
 public interface TtsService {
 
-    default TtsTask synthesize(TtsRequest request, TtsCallback callback) {
-        return synthesize(request, callback, task -> {
+    default StreamCancellationHandle synthesize(String text, TtsCallback callback) {
+        return synthesize(text, callback, handle -> {
         });
     }
 
-    TtsTask synthesize(TtsRequest request, TtsCallback callback, TtsTaskObserver taskObserver);
+    StreamCancellationHandle synthesize(String text, TtsCallback callback, TtsTaskObserver taskObserver);
 }

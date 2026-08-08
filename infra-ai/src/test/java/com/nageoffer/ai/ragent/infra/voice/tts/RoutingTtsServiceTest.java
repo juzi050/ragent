@@ -18,11 +18,13 @@
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
+import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
 import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
-import com.nageoffer.ai.ragent.infra.voice.websocket.VoicePoolExhaustedException;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -47,11 +49,11 @@ class RoutingTtsServiceTest {
         RoutingTtsService service = service(properties, healthStore, List.of(client));
 
         assertThrows(RemoteException.class,
-                () -> service.synthesize(new TtsRequest("第一次"), new RecordingCallback()));
+                () -> service.synthesize("第一次", new RecordingCallback()));
         assertFalse(healthStore.isUnavailable("tts-model"));
 
         assertThrows(RemoteException.class,
-                () -> service.synthesize(new TtsRequest("第二次"), new RecordingCallback()));
+                () -> service.synthesize("第二次", new RecordingCallback()));
         assertTrue(healthStore.isUnavailable("tts-model"));
         assertEquals(2, client.attempts.get());
         assertEquals(2, client.invalidatingCancellations.get());
@@ -66,7 +68,7 @@ class RoutingTtsServiceTest {
         RoutingTtsService service = service(properties, healthStore, List.of(primary, backup));
         RecordingCallback callback = new RecordingCallback();
 
-        TtsTask task = service.synthesize(new TtsRequest("你好"), callback);
+        StreamCancellationHandle handle = service.synthesize("你好", callback);
 
         assertArrayEquals(new byte[]{2, 3}, callback.audioEvents.get(0));
         assertEquals(1, callback.audioEvents.size());
@@ -74,7 +76,7 @@ class RoutingTtsServiceTest {
         assertEquals(0, callback.errors.get());
         assertEquals(1, primary.attempts.get());
         assertEquals(1, backup.attempts.get());
-        task.cancel();
+        handle.cancel();
     }
 
     @Test
@@ -90,11 +92,11 @@ class RoutingTtsServiceTest {
         AtomicBoolean cancelled = new AtomicBoolean();
         healthStore.markFailure("primary-model");
 
-        service.synthesize(new TtsRequest("立即取消"), callback, new TtsTaskObserver() {
+        service.synthesize("立即取消", callback, new TtsTaskObserver() {
             @Override
-            public void onTaskStarted(TtsTask task) {
+            public void onTaskStarted(StreamCancellationHandle handle) {
                 cancelled.set(true);
-                task.cancel();
+                handle.cancel();
             }
 
             @Override
@@ -123,7 +125,7 @@ class RoutingTtsServiceTest {
         healthStore.markFailure("tts-model");
 
         assertThrows(RemoteException.class,
-                () -> service.synthesize(new TtsRequest("连接池耗尽"), new RecordingCallback()));
+                () -> service.synthesize("连接池耗尽", new RecordingCallback()));
 
         assertEquals(1, client.attempts.get());
         assertFalse(healthStore.isUnavailable("tts-model"));
@@ -136,7 +138,6 @@ class RoutingTtsServiceTest {
         return new RoutingTtsService(
                 new ModelSelector(properties, healthStore),
                 healthStore,
-                new TtsFirstAudioProbe(),
                 clients
         );
     }
@@ -188,19 +189,10 @@ class RoutingTtsServiceTest {
         }
 
         @Override
-        public TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+        public StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
             attempts.incrementAndGet();
             callback.onError(new IllegalStateException("provider failed"));
-            return new TtsTask() {
-                @Override
-                public void cancel() {
-                }
-
-                @Override
-                public void cancelAndInvalidate() {
-                    invalidatingCancellations.incrementAndGet();
-                }
-            };
+            return invalidatingCancellations::incrementAndGet;
         }
     }
 
@@ -221,7 +213,7 @@ class RoutingTtsServiceTest {
         }
 
         @Override
-        public TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+        public StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
             attempts.incrementAndGet();
             callback.onAudio(audio);
             callback.onComplete();
@@ -245,7 +237,7 @@ class RoutingTtsServiceTest {
         }
 
         @Override
-        public TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+        public StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
             return () -> {
                 cancellations.incrementAndGet();
                 callback.onComplete();
@@ -268,9 +260,9 @@ class RoutingTtsServiceTest {
         }
 
         @Override
-        public TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+        public StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
             attempts.incrementAndGet();
-            throw new VoicePoolExhaustedException("pool exhausted", null);
+            throw new ModelClientException("pool exhausted", ModelClientErrorType.CAPACITY_EXHAUSTED, null);
         }
     }
 
