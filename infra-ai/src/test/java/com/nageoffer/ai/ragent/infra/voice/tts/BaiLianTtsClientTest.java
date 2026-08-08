@@ -32,10 +32,15 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BaiLianTtsClientTest {
@@ -110,6 +115,33 @@ class BaiLianTtsClientTest {
         client.close();
     }
 
+    @Test
+    void sendsCancelDirectiveBeforeFirstAudio() throws Exception {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory(false);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, executor, properties());
+        RecordingCallback callback = new RecordingCallback();
+
+        try {
+            TtsTask task = client.synthesize(new TtsRequest("取消播放"), callback, target());
+            assertTrue(factory.awaitNormalFinish());
+
+            task.cancel();
+
+            JsonObject cancel = factory.messages.get(factory.messages.size() - 1);
+            assertEquals("finish-task", cancel.getAsJsonObject("header").get("action").getAsString());
+            assertEquals("cancel", cancel.getAsJsonObject("payload")
+                    .getAsJsonObject("input")
+                    .get("directive")
+                    .getAsString());
+            assertNull(callback.audio);
+            assertTrue(callback.completed);
+        } finally {
+            client.close();
+            executor.shutdownNow();
+        }
+    }
+
     private ModelTarget target() {
         AIModelProperties.ModelCandidate candidate = new AIModelProperties.ModelCandidate();
         candidate.setId("cosyvoice-v3-flash");
@@ -165,7 +197,17 @@ class BaiLianTtsClientTest {
 
         private final List<JsonObject> messages = new ArrayList<>();
         private final AtomicInteger closeCount = new AtomicInteger();
+        private final CountDownLatch normalFinish = new CountDownLatch(1);
+        private final boolean autoFinish;
         private Request request;
+
+        private FakeWebSocketFactory() {
+            this(true);
+        }
+
+        private FakeWebSocketFactory(boolean autoFinish) {
+            this.autoFinish = autoFinish;
+        }
 
         @Override
         public WebSocket newWebSocket(Request request, WebSocketListener listener) {
@@ -191,6 +233,10 @@ class BaiLianTtsClientTest {
             return messages.stream()
                     .map(message -> message.getAsJsonObject("header").get("task_id").getAsString())
                     .toList();
+        }
+
+        private boolean awaitNormalFinish() throws InterruptedException {
+            return normalFinish.await(1, TimeUnit.SECONDS);
         }
 
         private final class FakeWebSocket implements WebSocket {
@@ -222,8 +268,16 @@ class BaiLianTtsClientTest {
                 if ("run-task".equals(action)) {
                     listener.onMessage(this, event(taskId, "task-started"));
                 } else if ("finish-task".equals(action)) {
-                    listener.onMessage(this, ByteString.of(OPUS_AUDIO));
-                    listener.onMessage(this, event(taskId, "task-finished"));
+                    JsonObject input = message.getAsJsonObject("payload").getAsJsonObject("input");
+                    if (input.has("directive")) {
+                        listener.onMessage(this, event(taskId, "task-finished"));
+                    } else {
+                        normalFinish.countDown();
+                        if (autoFinish) {
+                            listener.onMessage(this, ByteString.of(OPUS_AUDIO));
+                            listener.onMessage(this, event(taskId, "task-finished"));
+                        }
+                    }
                 }
                 return true;
             }

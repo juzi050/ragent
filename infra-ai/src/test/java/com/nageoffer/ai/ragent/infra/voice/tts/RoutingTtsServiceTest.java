@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -72,6 +73,37 @@ class RoutingTtsServiceTest {
         assertEquals(1, primary.attempts.get());
         assertEquals(1, backup.attempts.get());
         task.cancel();
+    }
+
+    @Test
+    void cancelsStartedTaskBeforeFirstAudioWithoutFallback() {
+        AIModelProperties properties = fallbackProperties();
+        ModelHealthStore healthStore = new ModelHealthStore(properties);
+        CancelCompletingTtsClient primary = new CancelCompletingTtsClient("primary");
+        SuccessfulTtsClient backup = new SuccessfulTtsClient("backup", new byte[]{2, 3});
+        RoutingTtsService service = service(properties, healthStore, List.of(primary, backup));
+        RecordingCallback callback = new RecordingCallback();
+        AtomicBoolean cancelled = new AtomicBoolean();
+
+        service.synthesize(new TtsRequest("立即取消"), callback, new TtsTaskObserver() {
+            @Override
+            public void onTaskStarted(TtsTask task) {
+                cancelled.set(true);
+                task.cancel();
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return cancelled.get();
+            }
+        });
+
+        assertEquals(1, primary.cancellations.get());
+        assertEquals(0, backup.attempts.get());
+        assertTrue(callback.audioEvents.isEmpty());
+        assertFalse(callback.completed);
+        assertEquals(0, callback.errors.get());
+        assertFalse(healthStore.isUnavailable("primary-model"));
     }
 
     private RoutingTtsService service(AIModelProperties properties,
@@ -170,6 +202,29 @@ class RoutingTtsServiceTest {
             callback.onAudio(audio);
             callback.onComplete();
             return () -> {
+            };
+        }
+    }
+
+    private static final class CancelCompletingTtsClient implements TtsClient {
+
+        private final String provider;
+        private final AtomicInteger cancellations = new AtomicInteger();
+
+        private CancelCompletingTtsClient(String provider) {
+            this.provider = provider;
+        }
+
+        @Override
+        public String provider() {
+            return provider;
+        }
+
+        @Override
+        public TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+            return () -> {
+                cancellations.incrementAndGet();
+                callback.onComplete();
             };
         }
     }

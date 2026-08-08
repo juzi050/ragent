@@ -60,7 +60,7 @@ public class RoutingTtsService implements TtsService {
     }
 
     @Override
-    public TtsTask synthesize(TtsRequest request, TtsCallback callback) {
+    public TtsTask synthesize(TtsRequest request, TtsCallback callback, TtsTaskObserver taskObserver) {
         List<ModelTarget> targets = selector.selectTtsCandidates();
         if (targets.isEmpty()) {
             throw notifyAllFailed(callback, null);
@@ -103,7 +103,17 @@ public class RoutingTtsService implements TtsService {
                 continue;
             }
 
+            taskObserver.onTaskStarted(task);
+            if (taskObserver.isCancelled()) {
+                bridge.discard();
+                return task;
+            }
+
             BinaryProbeStreamBridge.ProbeResult result = awaitFirstAudio(bridge, task, target, permit);
+            if (taskObserver.isCancelled()) {
+                bridge.discard();
+                return task;
+            }
             if (result.isSuccess()) {
                 healthStore.markSuccess(target.id());
                 bridge.commit();

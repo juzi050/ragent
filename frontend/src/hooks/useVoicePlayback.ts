@@ -69,6 +69,30 @@ function playInternal(messageId: string) {
   }
 
   let playStarted = false;
+  let streamEnded = false;
+  const mediaSource = new MediaSource();
+  mediaSourceRef = mediaSource;
+  const audio = new Audio();
+  audioElRef = audio;
+
+  const endStreamIfReady = () => {
+    if (
+      !streamEnded ||
+      appendPending ||
+      appendQueue.length > 0 ||
+      !sourceBufferRef ||
+      sourceBufferRef.updating ||
+      mediaSource.readyState !== "open"
+    ) {
+      return;
+    }
+    try {
+      mediaSource.endOfStream();
+    } catch {
+      // 流已关闭
+    }
+  };
+
   const flushAppendQueue = () => {
     if (appendPending || !sourceBufferRef || appendQueue.length === 0) return;
     const next = appendQueue.shift()!;
@@ -78,17 +102,17 @@ function playInternal(messageId: string) {
       // 首帧入缓冲后开始播放
       if (!playStarted) {
         playStarted = true;
-        audio.play().catch(() => null);
+        audio.play().catch(() => {
+          if (audioElRef === audio) {
+            stopInternal();
+            setPlaying(null);
+          }
+        });
       }
     } catch {
       appendPending = false;
     }
   };
-
-  const mediaSource = new MediaSource();
-  mediaSourceRef = mediaSource;
-  const audio = new Audio();
-  audioElRef = audio;
 
   mediaSource.addEventListener("sourceopen", () => {
     try {
@@ -98,9 +122,11 @@ function playInternal(messageId: string) {
       sourceBufferRef.addEventListener("updateend", () => {
         appendPending = false;
         flushAppendQueue();
+        endStreamIfReady();
       });
       // 补排待追加的帧
       flushAppendQueue();
+      endStreamIfReady();
     } catch {
       setPlaying(null);
     }
@@ -123,31 +149,24 @@ function playInternal(messageId: string) {
       } else if (event === "done") {
         streamRef = null;
         taskIdRef = null;
-        if (mediaSourceRef && mediaSourceRef.readyState === "open") {
-          try {
-            mediaSourceRef.endOfStream();
-          } catch {
-            // 流已关闭
-          }
-        }
+        streamEnded = true;
+        endStreamIfReady();
       }
     },
     onError() {
       streamRef = null;
       taskIdRef = null;
       // 流异常结束 让已缓冲音频播完
-      if (mediaSourceRef && mediaSourceRef.readyState === "open") {
-        try {
-          mediaSourceRef.endOfStream();
-        } catch {
-          // 流已关闭
-        }
-      }
+      streamEnded = true;
+      endStreamIfReady();
       setPlaying(null);
     }
   };
 
-  const stream = createStreamResponse({ url: `${PLAY_URL}?messageId=${encodeURIComponent(messageId)}` }, handlers);
+  const stream = createStreamResponse(
+    { url: `${PLAY_URL}?messageId=${encodeURIComponent(messageId)}`, retryCount: 0 },
+    handlers
+  );
   streamRef = stream;
 
   if (objectUrlRef) {
@@ -156,7 +175,12 @@ function playInternal(messageId: string) {
   objectUrlRef = URL.createObjectURL(mediaSource);
   audio.src = objectUrlRef;
 
-  stream.start().catch(() => setPlaying(null));
+  stream.start().catch(() => {
+    if (streamRef === stream) {
+      stopInternal();
+      setPlaying(null);
+    }
+  });
   setPlaying(messageId);
 }
 

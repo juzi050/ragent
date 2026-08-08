@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.infra.voice.tts.TtsCallback;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsRequest;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsService;
 import com.nageoffer.ai.ragent.infra.voice.tts.TtsTask;
+import com.nageoffer.ai.ragent.infra.voice.tts.TtsTaskObserver;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.rag.dto.AudioFramePayload;
@@ -90,13 +91,17 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 taskId, messageId, userId, text.length(), audioFormat);
 
         SseEmitterSender sender = new SseEmitterSender(emitter);
+        AtomicBoolean taskTerminated = new AtomicBoolean();
         taskManager.register(taskId, sender, () -> null);
+        bindEmitterCancellation(taskId, emitter, taskTerminated);
+        sender.sendEvent(SSEEventType.AUDIO_META.value(), new AudioMetaPayload(taskId, audioFormat, null));
 
         // 独立线程池异步合成
         try {
-            voicePlaybackExecutor.execute(() -> synthesizeAndStream(taskId, userId, text, audioFormat, sender));
+            voicePlaybackExecutor.execute(() -> synthesizeAndStream(taskId, userId, text, sender, taskTerminated));
         } catch (RejectedExecutionException exception) {
             log.error("播放任务线程池拒绝，taskId={}", taskId, exception);
+            taskTerminated.set(true);
             taskManager.unregister(taskId);
             sender.fail(exception);
         }
@@ -107,33 +112,41 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         taskManager.cancel(taskId);
     }
 
-    private void synthesizeAndStream(String taskId, String userId, String text, String audioFormat, SseEmitterSender sender) {
+    private void synthesizeAndStream(String taskId, String userId, String text, SseEmitterSender sender,
+                                     AtomicBoolean taskTerminated) {
         if (taskManager.isCancelled(taskId)) {
+            taskTerminated.set(true);
             return;
         }
-        AtomicBoolean metaSent = new AtomicBoolean();
         AtomicBoolean metaLogged = new AtomicBoolean();
         AtomicInteger audioFrameCount = new AtomicInteger();
         AtomicLong audioBytes = new AtomicLong();
-        TtsCallback callback = buildCallback(taskId, sender, audioFormat, metaSent, metaLogged, audioFrameCount, audioBytes);
+        TtsCallback callback = buildCallback(
+                taskId, sender, taskTerminated, metaLogged, audioFrameCount, audioBytes);
 
-        TtsTask task;
         try {
-            task = ttsService.synthesize(new TtsRequest(text), callback);
+            ttsService.synthesize(new TtsRequest(text), callback, new TtsTaskObserver() {
+                @Override
+                public void onTaskStarted(TtsTask task) {
+                    taskManager.bindHandle(taskId, toCancellationHandle(taskId, task));
+                }
+
+                @Override
+                public boolean isCancelled() {
+                    return taskManager.isCancelled(taskId);
+                }
+            });
             log.info("播放任务已启动，taskId={}，textLength={}", taskId, text.length());
         } catch (RuntimeException exception) {
             log.error("播放任务启动失败，taskId={}，textLength={}", taskId, text.length(), exception);
+            taskTerminated.set(true);
             taskManager.unregister(taskId);
             sender.fail(exception);
-            return;
         }
-
-        // 绑定取消句柄
-        taskManager.bindHandle(taskId, toCancellationHandle(taskId, task));
     }
 
-    private TtsCallback buildCallback(String taskId, SseEmitterSender sender, String audioFormat,
-                                      AtomicBoolean metaSent, AtomicBoolean metaLogged,
+    private TtsCallback buildCallback(String taskId, SseEmitterSender sender, AtomicBoolean taskTerminated,
+                                      AtomicBoolean metaLogged,
                                       AtomicInteger audioFrameCount, AtomicLong audioBytes) {
         return new TtsCallback() {
             @Override
@@ -143,10 +156,6 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 }
                 if (opusAudio == null || opusAudio.length == 0) {
                     return;
-                }
-                // 首帧前下发音频元信息
-                if (metaSent.compareAndSet(false, true)) {
-                    sender.sendEvent(SSEEventType.AUDIO_META.value(), new AudioMetaPayload(taskId, audioFormat, null));
                 }
                 if (metaLogged.compareAndSet(false, true)) {
                     log.info("播放任务首帧下发，taskId={}，frameBytes={}", taskId, opusAudio.length);
@@ -163,6 +172,7 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                     return;
                 }
                 log.info("播放任务完成，taskId={}", taskId);
+                taskTerminated.set(true);
                 sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
                 taskManager.unregister(taskId);
                 sender.complete();
@@ -175,10 +185,22 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 }
                 log.error("播放任务失败，taskId={}，已收帧数={}，已收字节={}",
                         taskId, audioFrameCount.get(), audioBytes.get(), throwable);
+                taskTerminated.set(true);
                 taskManager.unregister(taskId);
                 sender.fail(throwable);
             }
         };
+    }
+
+    private void bindEmitterCancellation(String taskId, SseEmitter emitter, AtomicBoolean taskTerminated) {
+        Runnable cancel = () -> {
+            if (taskTerminated.compareAndSet(false, true) && !taskManager.isCancelled(taskId)) {
+                taskManager.cancel(taskId);
+            }
+        };
+        emitter.onCompletion(cancel);
+        emitter.onTimeout(cancel);
+        emitter.onError(ignored -> cancel.run());
     }
 
     private StreamCancellationHandle toCancellationHandle(String taskId, TtsTask task) {

@@ -18,14 +18,20 @@
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
 /**
- * 文本转语音服务
+ * TTS 任务生命周期观察器
  */
-public interface TtsService {
+@FunctionalInterface
+public interface TtsTaskObserver {
 
-    default TtsTask synthesize(TtsRequest request, TtsCallback callback) {
-        return synthesize(request, callback, task -> {
-        });
+    /**
+     * 供应商任务已启动
+     */
+    void onTaskStarted(TtsTask task);
+
+    /**
+     * 当前调用是否已取消
+     */
+    default boolean isCancelled() {
+        return false;
     }
-
-    TtsTask synthesize(TtsRequest request, TtsCallback callback, TtsTaskObserver taskObserver);
 }
