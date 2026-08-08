@@ -26,8 +26,8 @@ import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
-import com.nageoffer.ai.ragent.infra.voice.VoiceConnection;
-import com.nageoffer.ai.ragent.infra.voice.VoiceConnectionState;
+import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnection;
+import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnectionState;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.WebSocket;
@@ -224,6 +224,12 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
     }
 
     private void failTask(JsonObject header) {
+        if (isCancelling()) {
+            // 用户已取消 不再上报任务错误 但 task-failed 连接不可复用
+            markBroken();
+            completeTaskFinishedQuietly();
+            return;
+        }
         String errorCode = header.has("error_code") ? header.get("error_code").getAsString() : "unknown";
         String errorMessage = header.has("error_message") ? header.get("error_message").getAsString() : "unknown";
         ModelClientException exception = new ModelClientException(
@@ -243,6 +249,12 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
     }
 
     private void failConnection(Throwable throwable) {
+        if (isCancelling()) {
+            // 取消过程中连接被关闭 属预期 连接不可复用但不通知上层
+            markBroken();
+            completeTaskFinishedQuietly();
+            return;
+        }
         connectionReady.completeExceptionally(throwable);
         CompletableFuture<Void> started = taskStarted;
         if (started != null) {
@@ -253,6 +265,13 @@ final class BaiLianTtsConnection extends VoiceConnection<BaiLianTtsTaskParam, St
             finished.completeExceptionally(throwable);
         }
         connectionBroken(throwable);
+    }
+
+    private void completeTaskFinishedQuietly() {
+        CompletableFuture<Void> finished = taskFinished;
+        if (finished != null) {
+            finished.complete(null);
+        }
     }
 
     private void await(CompletableFuture<Void> future, long timeoutMs) throws Exception {

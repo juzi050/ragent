@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice;
+package com.nageoffer.ai.ragent.infra.voice.websocket;
 
 import lombok.extern.slf4j.Slf4j;
 

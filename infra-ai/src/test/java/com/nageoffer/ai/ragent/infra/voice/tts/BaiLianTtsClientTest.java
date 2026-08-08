@@ -126,7 +126,7 @@ class BaiLianTtsClientTest {
             TtsTask task = client.synthesize(new TtsRequest("取消播放"), callback, target());
             assertTrue(factory.awaitNormalFinish());
 
-            task.cancel();
+            task.cancelAndInvalidate();
 
             JsonObject cancel = factory.messages.get(factory.messages.size() - 1);
             assertEquals("finish-task", cancel.getAsJsonObject("header").get("action").getAsString());
@@ -136,6 +136,26 @@ class BaiLianTtsClientTest {
                     .getAsString());
             assertNull(callback.audio);
             assertTrue(callback.completed);
+            assertEquals(1, factory.closeCount.get());
+        } finally {
+            client.close();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void invalidatesConnectionWhenCancelReceivesTaskFailed() throws Exception {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory(false, true);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, executor, properties());
+
+        try {
+            TtsTask task = client.synthesize(new TtsRequest("取消播放"), new RecordingCallback(), target());
+            assertTrue(factory.awaitNormalFinish());
+
+            task.cancel();
+
+            assertEquals(1, factory.closeCount.get());
         } finally {
             client.close();
             executor.shutdownNow();
@@ -199,14 +219,20 @@ class BaiLianTtsClientTest {
         private final AtomicInteger closeCount = new AtomicInteger();
         private final CountDownLatch normalFinish = new CountDownLatch(1);
         private final boolean autoFinish;
+        private final boolean failOnCancel;
         private Request request;
 
         private FakeWebSocketFactory() {
-            this(true);
+            this(true, false);
         }
 
         private FakeWebSocketFactory(boolean autoFinish) {
+            this(autoFinish, false);
+        }
+
+        private FakeWebSocketFactory(boolean autoFinish, boolean failOnCancel) {
             this.autoFinish = autoFinish;
+            this.failOnCancel = failOnCancel;
         }
 
         @Override
@@ -270,7 +296,7 @@ class BaiLianTtsClientTest {
                 } else if ("finish-task".equals(action)) {
                     JsonObject input = message.getAsJsonObject("payload").getAsJsonObject("input");
                     if (input.has("directive")) {
-                        listener.onMessage(this, event(taskId, "task-finished"));
+                        listener.onMessage(this, event(taskId, failOnCancel ? "task-failed" : "task-finished"));
                     } else {
                         normalFinish.countDown();
                         if (autoFinish) {

@@ -15,14 +15,19 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice;
+package com.nageoffer.ai.ragent.infra.voice.websocket;
 
 /**
- * 连接池容量不足 非模型故障 不计入健康记账
+ * WebSocket 物理连接及当前任务的状态
  */
-public class VoicePoolExhaustedException extends RuntimeException {
+public enum VoiceConnectionState {
 
-    public VoicePoolExhaustedException(String message, Throwable cause) {
-        super(message, cause);
-    }
+    CONNECTING,
+    IDLE,
+    TASK_STARTING,
+    TASK_RUNNING,
+    TASK_FINISHING,
+    TASK_CANCELLING,
+    BROKEN,
+    CLOSED
 }

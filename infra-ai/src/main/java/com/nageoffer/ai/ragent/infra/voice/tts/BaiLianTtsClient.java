@@ -23,7 +23,7 @@ import com.nageoffer.ai.ragent.infra.http.HttpResponseHelper;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
-import com.nageoffer.ai.ragent.infra.voice.WsExecutorConfig;
+import com.nageoffer.ai.ragent.infra.voice.websocket.WsExecutorConfig;
 import jakarta.annotation.PreDestroy;
 import okhttp3.OkHttpClient;
 import okhttp3.WebSocket;

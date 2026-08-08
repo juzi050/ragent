@@ -18,11 +18,11 @@
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
-import com.nageoffer.ai.ragent.infra.voice.VoiceConnection;
-import com.nageoffer.ai.ragent.infra.voice.VoiceStreamCallback;
-import com.nageoffer.ai.ragent.infra.voice.WsExecutorConfig;
-import com.nageoffer.ai.ragent.infra.voice.WsTaskExecutor;
-import com.nageoffer.ai.ragent.infra.voice.WsTaskSession;
+import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnection;
+import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceStreamCallback;
+import com.nageoffer.ai.ragent.infra.voice.websocket.WsExecutorConfig;
+import com.nageoffer.ai.ragent.infra.voice.websocket.WsTaskExecutor;
+import com.nageoffer.ai.ragent.infra.voice.websocket.WsTaskSession;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;

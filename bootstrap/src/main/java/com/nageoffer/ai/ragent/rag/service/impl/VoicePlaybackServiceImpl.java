@@ -101,9 +101,11 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
             voicePlaybackExecutor.execute(() -> synthesizeAndStream(taskId, userId, text, sender, taskTerminated));
         } catch (RejectedExecutionException exception) {
             log.error("播放任务线程池拒绝，taskId={}", taskId, exception);
-            taskTerminated.set(true);
+            boolean notifyClient = taskTerminated.compareAndSet(false, true);
             taskManager.unregister(taskId);
-            sender.fail(exception);
+            if (notifyClient) {
+                sender.fail(exception);
+            }
         }
     }
 
@@ -138,8 +140,18 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
             });
             log.info("播放任务已启动，taskId={}，textLength={}", taskId, text.length());
         } catch (RuntimeException exception) {
+            if (taskManager.isCancelled(taskId)) {
+                // 用户已取消 启动期异常属取消响应 不打错误
+                log.info("播放任务已取消，忽略启动异常，taskId={}，textLength={}", taskId, text.length());
+                taskManager.unregister(taskId);
+                return;
+            }
+            boolean notifyClient = taskTerminated.compareAndSet(false, true);
+            if (!notifyClient) {
+                taskManager.unregister(taskId);
+                return;
+            }
             log.error("播放任务启动失败，taskId={}，textLength={}", taskId, text.length(), exception);
-            taskTerminated.set(true);
             taskManager.unregister(taskId);
             sender.fail(exception);
         }
@@ -151,7 +163,7 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
         return new TtsCallback() {
             @Override
             public void onAudio(byte[] opusAudio) {
-                if (taskManager.isCancelled(taskId)) {
+                if (taskTerminated.get() || taskManager.isCancelled(taskId)) {
                     return;
                 }
                 if (opusAudio == null || opusAudio.length == 0) {
@@ -171,8 +183,12 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 if (taskManager.isCancelled(taskId)) {
                     return;
                 }
+                boolean notifyClient = taskTerminated.compareAndSet(false, true);
+                if (!notifyClient) {
+                    taskManager.unregister(taskId);
+                    return;
+                }
                 log.info("播放任务完成，taskId={}", taskId);
-                taskTerminated.set(true);
                 sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
                 taskManager.unregister(taskId);
                 sender.complete();
@@ -183,9 +199,13 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 if (taskManager.isCancelled(taskId)) {
                     return;
                 }
+                boolean notifyClient = taskTerminated.compareAndSet(false, true);
+                if (!notifyClient) {
+                    taskManager.unregister(taskId);
+                    return;
+                }
                 log.error("播放任务失败，taskId={}，已收帧数={}，已收字节={}",
                         taskId, audioFrameCount.get(), audioBytes.get(), throwable);
-                taskTerminated.set(true);
                 taskManager.unregister(taskId);
                 sender.fail(throwable);
             }
@@ -204,10 +224,11 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
     }
 
     private StreamCancellationHandle toCancellationHandle(String taskId, TtsTask task) {
-        // 停止播放归还连接复用 连接异常由连接层销毁
+        // 取消指令与已在途的 finish-task 存在竞态 停止后不复用当前连接
         return () -> {
             try {
-                task.cancel();
+                task.cancelAndInvalidate();
+                log.info("播放任务已取消，taskId={}", taskId);
             } catch (RuntimeException exception) {
                 log.warn("播放任务取消失败，taskId={}", taskId, exception);
             }

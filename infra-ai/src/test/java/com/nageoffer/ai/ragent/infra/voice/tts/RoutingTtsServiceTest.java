@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
 import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+import com.nageoffer.ai.ragent.infra.voice.websocket.VoicePoolExhaustedException;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,14 +78,17 @@ class RoutingTtsServiceTest {
     }
 
     @Test
-    void cancelsStartedTaskBeforeFirstAudioWithoutFallback() {
+    void releasesHalfOpenPermitWhenStartedTaskIsCancelledBeforeFirstAudio() {
         AIModelProperties properties = fallbackProperties();
+        properties.getSelection().setFailureThreshold(1);
+        properties.getSelection().setOpenDurationMs(0L);
         ModelHealthStore healthStore = new ModelHealthStore(properties);
         CancelCompletingTtsClient primary = new CancelCompletingTtsClient("primary");
         SuccessfulTtsClient backup = new SuccessfulTtsClient("backup", new byte[]{2, 3});
         RoutingTtsService service = service(properties, healthStore, List.of(primary, backup));
         RecordingCallback callback = new RecordingCallback();
         AtomicBoolean cancelled = new AtomicBoolean();
+        healthStore.markFailure("primary-model");
 
         service.synthesize(new TtsRequest("立即取消"), callback, new TtsTaskObserver() {
             @Override
@@ -104,6 +109,25 @@ class RoutingTtsServiceTest {
         assertFalse(callback.completed);
         assertEquals(0, callback.errors.get());
         assertFalse(healthStore.isUnavailable("primary-model"));
+        assertNotNull(healthStore.allowCall("primary-model"));
+    }
+
+    @Test
+    void releasesHalfOpenPermitWhenConnectionPoolIsExhausted() {
+        AIModelProperties properties = singleModelProperties();
+        properties.getSelection().setFailureThreshold(1);
+        properties.getSelection().setOpenDurationMs(0L);
+        ModelHealthStore healthStore = new ModelHealthStore(properties);
+        PoolExhaustedTtsClient client = new PoolExhaustedTtsClient("test");
+        RoutingTtsService service = service(properties, healthStore, List.of(client));
+        healthStore.markFailure("tts-model");
+
+        assertThrows(RemoteException.class,
+                () -> service.synthesize(new TtsRequest("连接池耗尽"), new RecordingCallback()));
+
+        assertEquals(1, client.attempts.get());
+        assertFalse(healthStore.isUnavailable("tts-model"));
+        assertNotNull(healthStore.allowCall("tts-model"));
     }
 
     private RoutingTtsService service(AIModelProperties properties,
@@ -226,6 +250,27 @@ class RoutingTtsServiceTest {
                 cancellations.incrementAndGet();
                 callback.onComplete();
             };
+        }
+    }
+
+    private static final class PoolExhaustedTtsClient implements TtsClient {
+
+        private final String provider;
+        private final AtomicInteger attempts = new AtomicInteger();
+
+        private PoolExhaustedTtsClient(String provider) {
+            this.provider = provider;
+        }
+
+        @Override
+        public String provider() {
+            return provider;
+        }
+
+        @Override
+        public TtsTask synthesize(TtsRequest request, TtsCallback callback, ModelTarget target) {
+            attempts.incrementAndGet();
+            throw new VoicePoolExhaustedException("pool exhausted", null);
         }
     }
 

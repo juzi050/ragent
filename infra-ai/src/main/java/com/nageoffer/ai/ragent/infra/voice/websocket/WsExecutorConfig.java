@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice;
+package com.nageoffer.ai.ragent.infra.voice.websocket;
 
 /**
  * 单个 modelId 的 WebSocket 连接池容量

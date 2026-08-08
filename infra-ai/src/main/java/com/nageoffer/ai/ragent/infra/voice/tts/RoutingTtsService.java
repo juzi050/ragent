@@ -22,7 +22,7 @@ import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
-import com.nageoffer.ai.ragent.infra.voice.VoicePoolExhaustedException;
+import com.nageoffer.ai.ragent.infra.voice.websocket.VoicePoolExhaustedException;
 import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.extern.slf4j.Slf4j;
@@ -77,55 +77,60 @@ public class RoutingTtsService implements TtsService {
                 continue;
             }
 
-            BinaryProbeStreamBridge bridge = new BinaryProbeStreamBridge(callback);
-            TtsTask task;
             try {
-                task = client.synthesize(request, bridge, target);
-            } catch (VoicePoolExhaustedException exception) {
-                // 容量不足 非模型故障 不记账 继续尝试其他候选
-                bridge.discard();
-                lastError = exception;
-                log.warn("TTS 连接池容量不足，modelId={}", target.id());
-                continue;
-            } catch (RuntimeException exception) {
+                BinaryProbeStreamBridge bridge = new BinaryProbeStreamBridge(callback);
+                TtsTask task;
+                try {
+                    task = client.synthesize(request, bridge, target);
+                } catch (VoicePoolExhaustedException exception) {
+                    // 容量不足 非模型故障 不记账 继续尝试其他候选
+                    bridge.discard();
+                    lastError = exception;
+                    log.warn("TTS 连接池容量不足，modelId={}", target.id());
+                    continue;
+                } catch (RuntimeException exception) {
+                    bridge.discard();
+                    healthStore.markFailure(target.id());
+                    lastError = exception;
+                    log.warn("TTS 任务启动失败，modelId={}，provider={}",
+                            target.id(), target.candidate().getProvider(), exception);
+                    continue;
+                }
+                if (task == null) {
+                    bridge.discard();
+                    healthStore.markFailure(target.id());
+                    lastError = new ModelClientException("TTS 供应商未返回任务句柄，modelId=" + target.id(),
+                            ModelClientErrorType.INVALID_RESPONSE, null);
+                    continue;
+                }
+
+                taskObserver.onTaskStarted(task);
+                if (taskObserver.isCancelled()) {
+                    bridge.discard();
+                    return task;
+                }
+
+                BinaryProbeStreamBridge.ProbeResult result = awaitFirstAudio(bridge, task, target);
+                if (taskObserver.isCancelled()) {
+                    bridge.discard();
+                    return task;
+                }
+                if (result.isSuccess()) {
+                    healthStore.markSuccess(target.id());
+                    bridge.commit();
+                    return task;
+                }
+
                 bridge.discard();
                 healthStore.markFailure(target.id());
-                lastError = exception;
-                log.warn("TTS 任务启动失败，modelId={}，provider={}",
-                        target.id(), target.candidate().getProvider(), exception);
-                continue;
+                lastError = buildFailure(target, result);
+                cancelQuietly(task, target);
+                log.warn("TTS 首音频确认失败，modelId={}，type={}",
+                        target.id(), result.type(), lastError);
+            } finally {
+                // 用户取消、连接池耗尽等中性退出不记模型故障，但必须归还半开探测名额
+                healthStore.releaseHalfOpenPermit(permit);
             }
-            if (task == null) {
-                bridge.discard();
-                healthStore.markFailure(target.id());
-                lastError = new ModelClientException("TTS 供应商未返回任务句柄，modelId=" + target.id(),
-                        ModelClientErrorType.INVALID_RESPONSE, null);
-                continue;
-            }
-
-            taskObserver.onTaskStarted(task);
-            if (taskObserver.isCancelled()) {
-                bridge.discard();
-                return task;
-            }
-
-            BinaryProbeStreamBridge.ProbeResult result = awaitFirstAudio(bridge, task, target, permit);
-            if (taskObserver.isCancelled()) {
-                bridge.discard();
-                return task;
-            }
-            if (result.isSuccess()) {
-                healthStore.markSuccess(target.id());
-                bridge.commit();
-                return task;
-            }
-
-            bridge.discard();
-            healthStore.markFailure(target.id());
-            lastError = buildFailure(target, result);
-            cancelQuietly(task, target);
-            log.warn("TTS 首音频确认失败，modelId={}，type={}",
-                    target.id(), result.type(), lastError);
         }
 
         throw notifyAllFailed(callback, lastError);
@@ -142,8 +147,7 @@ public class RoutingTtsService implements TtsService {
 
     private BinaryProbeStreamBridge.ProbeResult awaitFirstAudio(BinaryProbeStreamBridge bridge,
                                                                 TtsTask task,
-                                                                ModelTarget target,
-                                                                ModelHealthStore.CallPermit permit) {
+                                                                ModelTarget target) {
         try {
             long timeoutMs = target.timeoutMs();
             return firstAudioProbe.awaitFirstAudio(bridge, timeoutMs, TimeUnit.MILLISECONDS);
@@ -153,11 +157,7 @@ public class RoutingTtsService implements TtsService {
                     "TTS 首音频等待被中断", exception, BaseErrorCode.REMOTE_ERROR);
             bridge.onError(interrupted);
             bridge.commit();
-            try {
-                cancelQuietly(task, target);
-            } finally {
-                healthStore.releaseHalfOpenPermit(permit);
-            }
+            cancelQuietly(task, target);
             throw interrupted;
         }
     }

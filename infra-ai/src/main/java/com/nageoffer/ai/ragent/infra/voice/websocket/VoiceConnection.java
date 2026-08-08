@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.infra.voice;
+package com.nageoffer.ai.ragent.infra.voice.websocket;
 
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
@@ -40,6 +40,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     private final AtomicReference<String> currentTaskId = new AtomicReference<>();
     private final AtomicReference<VoiceStreamCallback<O>> currentCallback = new AtomicReference<>();
     private final AtomicBoolean taskErrorNotified = new AtomicBoolean();
+    private final AtomicBoolean cancelling = new AtomicBoolean();
     private volatile WebSocket webSocket;
 
     protected VoiceConnection(ModelTarget target, WebSocket.Factory webSocketFactory) {
@@ -145,6 +146,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
             throw new IllegalStateException("Voice 任务当前不可取消，modelId=" + modelId() + "，taskId=" + taskId
                     + "，state=" + previous);
         }
+        cancelling.set(true);
         try {
             if (previous != VoiceConnectionState.TASK_CANCELLING) {
                 doCancelTask(taskId);
@@ -154,7 +156,16 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
         } catch (Exception exception) {
             markBroken();
             throw wrap("Voice 任务取消失败，modelId=" + modelId() + "，taskId=" + taskId, exception);
+        } finally {
+            cancelling.set(false);
         }
+    }
+
+    /**
+     * 当前是否处于取消流程 供应商响应 task-failed 或连接关闭时用于区分预期取消
+     */
+    protected final boolean isCancelling() {
+        return cancelling.get();
     }
 
     public final String modelId() {
@@ -267,7 +278,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
         }
     }
 
-    private boolean markBroken() {
+    protected final boolean markBroken() {
         while (true) {
             VoiceConnectionState current = state.get();
             if (current == VoiceConnectionState.CLOSED) {

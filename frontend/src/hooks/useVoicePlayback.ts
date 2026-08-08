@@ -1,6 +1,7 @@
 import { useChatStore } from "@/stores/chatStore";
 
 import { createStreamResponse } from "@/hooks/useStreamResponse";
+import { storage } from "@/utils/storage";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const PLAY_URL = `${API_BASE_URL}/rag/v3/voice/play`;
@@ -25,9 +26,12 @@ let appendPending = false;
 function stopInternal() {
   const taskId = taskIdRef;
   if (taskId) {
-    fetch(`${STOP_URL}?taskId=${encodeURIComponent(taskId)}`, { method: "POST" }).catch(() => null);
+    const token = storage.getToken();
+    fetch(`${STOP_URL}?taskId=${encodeURIComponent(taskId)}`, {
+      method: "POST",
+      headers: token ? { Authorization: token } : undefined
+    }).catch(() => null);
   }
-  streamRef?.cancel();
   streamRef = null;
   taskIdRef = null;
   if (audioElRef) {
@@ -137,6 +141,7 @@ function playInternal(messageId: string) {
 
   const handlers = {
     onEvent(event: string, payload: unknown) {
+      if (streamRef !== stream) return;
       if (event === "audio-meta") {
         const meta = payload as AudioMetaPayload;
         taskIdRef = meta?.taskId ?? null;
@@ -154,6 +159,7 @@ function playInternal(messageId: string) {
       }
     },
     onError() {
+      if (streamRef !== stream) return;
       streamRef = null;
       taskIdRef = null;
       // 流异常结束 让已缓冲音频播完
@@ -163,8 +169,13 @@ function playInternal(messageId: string) {
     }
   };
 
+  const token = storage.getToken();
   const stream = createStreamResponse(
-    { url: `${PLAY_URL}?messageId=${encodeURIComponent(messageId)}`, retryCount: 0 },
+    {
+      url: `${PLAY_URL}?messageId=${encodeURIComponent(messageId)}`,
+      headers: token ? { Authorization: token } : undefined,
+      retryCount: 0
+    },
     handlers
   );
   streamRef = stream;
