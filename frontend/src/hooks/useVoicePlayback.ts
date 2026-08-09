@@ -58,7 +58,7 @@ function stopInternal() {
 }
 
 /**
- * MSE 流式播放 MP3 帧边收边喂 SourceBuffer（audio/mpeg）
+ * MSE 流式播放 MP3
  */
 function playInternal(messageId: string) {
   stopInternal();

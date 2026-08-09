@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 可复用 Voice WebSocket 连接模板，一条物理连接同时最多承载一个 taskId
+ * 可复用 Voice WebSocket 连接模板
  */
 public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
 
@@ -125,7 +125,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 正常结束当前任务，收到终态后连接变为空闲
+     * 正常结束当前任务并在收到终态后进入空闲状态
      */
     public final void finishTask(String taskId) {
         requireCurrentTask(taskId, VoiceConnectionState.TASK_RUNNING);
@@ -146,7 +146,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 取消当前任务，收到终态后将连接标记为不可复用
+     * 取消当前任务并在收到终态后禁用连接复用
      */
     public final void cancelTask(String taskId) {
         if (state.get() == VoiceConnectionState.IDLE && currentTaskId.get() == null) {
@@ -217,7 +217,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 构建供应商连接请求，URL、鉴权头由具体客户端提供
+     * 构建供应商连接请求
      */
     protected abstract Request buildWebSocketRequest() throws Exception;
 
@@ -305,7 +305,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
      */
     protected final void markTaskFailed(Throwable throwable) {
         if (cancelling.get()) {
-            // 取消响应可能表现为 task-failed，不再上报业务错误，但连接不可复用
+            // 取消响应可能表现为 task-failed 此时不上报业务错误且禁用连接复用
             markBroken();
             completeTaskFinished(null);
             return;
@@ -320,7 +320,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
 
     private void failConnection(Throwable throwable) {
         if (cancelling.get()) {
-            // 取消过程中连接关闭属于预期，不再上报业务错误
+            // 取消过程中连接关闭属于预期 无需上报业务错误
             markBroken();
             completeTaskFinished(null);
             return;

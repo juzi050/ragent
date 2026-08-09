@@ -130,7 +130,7 @@ public class RoutingTtsService implements TtsService {
                 log.warn("TTS 首音频确认失败，modelId={}，type={}",
                         target.id(), result.getType(), lastError);
             } finally {
-                // 用户取消、连接池耗尽等中性退出不记模型故障，但必须归还半开探测名额
+                // 中性退出不记模型故障并归还半开探测名额
                 healthStore.releaseHalfOpenPermit(permit);
             }
         }

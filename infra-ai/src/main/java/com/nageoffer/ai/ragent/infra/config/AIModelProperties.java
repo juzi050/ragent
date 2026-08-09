@@ -100,7 +100,7 @@ public class AIModelProperties {
         private List<ModelCandidate> candidates = new ArrayList<>();
 
         /**
-         * 模型组调用超时预算（毫秒），未配置时为 null
+         * 模型组调用超时预算
          */
         private Long timeoutMs;
 
@@ -140,12 +140,12 @@ public class AIModelProperties {
         private int maxIdlePerModel;
 
         /**
-         * 连接空闲驱逐超时（毫秒） 0 表示不驱逐
+         * 连接空闲驱逐超时 0 表示不驱逐
          */
         private long idleTimeoutMs;
 
         /**
-         * 空闲驱逐扫描间隔（毫秒）
+         * 空闲驱逐扫描间隔
          */
         private long evictionIntervalMs;
     }
@@ -240,7 +240,7 @@ public class AIModelProperties {
         private String apiKey;
 
         /**
-         * 供应商工作空间标识（仅需要工作空间隔离的供应商使用）
+         * 供应商工作空间标识
          */
         private String workspace;
 

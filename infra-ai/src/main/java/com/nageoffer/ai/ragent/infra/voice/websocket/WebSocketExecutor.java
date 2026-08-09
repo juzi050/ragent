@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
- * Voice WebSocket 执行器，按 modelId 管理连接池
+ * 按 modelId 管理 Voice WebSocket 连接池
  */
 public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {
 
@@ -67,7 +67,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
             return new WebSocketConnectionLease<>(pool, connection);
         } catch (NoSuchElementException exception) {
             Throwable cause = exception.getCause();
-            // 池满（无 cause）是容量信号；create 失败（有 cause）是建连故障，透传走正常故障分类
+            // 无 cause 表示池满 有 cause 表示建连失败
             if (cause == null) {
                 throw new ModelClientException("Voice 连接池无可用连接，modelId=" + modelId,
                         ModelClientErrorType.RATE_LIMITED, null, exception);
@@ -98,7 +98,8 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
         if (config.getIdleTimeoutMs() > 0) {
             poolConfig.setMinEvictableIdleTime(Duration.ofMillis(config.getIdleTimeoutMs()));
             poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(config.getEvictionIntervalMs()));
-            poolConfig.setNumTestsPerEvictionRun(1);
+            // 每轮检查全部空闲连接
+            poolConfig.setNumTestsPerEvictionRun(-1);
         }
 
         return new GenericObjectPool<>(new BasePooledObjectFactory<>() {
@@ -143,7 +144,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
         try {
             connection.close();
         } catch (RuntimeException ignored) {
-            // 销毁路径忽略关闭异常，保证连接池收敛
+            // 销毁时忽略关闭异常以保证连接池收敛
         }
     }
 

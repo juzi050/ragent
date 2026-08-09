@@ -292,22 +292,22 @@ ai:
 
   tts:
     default-model: cosyvoice-v3-flash
-    timeout-ms: 3000  # 首音频等待超时，超时即切换下一个候选模型
+    timeout-ms: 3000
     candidates:
       - id: cosyvoice-v3-flash
         provider: bailian
         model: cosyvoice-v3-flash
         priority: 1
-        voice: longxiaochun_v3  # 默认音色
+        voice: longxiaochun_v3
 
   websocket:
     connect-timeout-ms: 10000
     task-start-timeout-ms: 10000
-    task-finish-timeout-ms: 10000
+    task-finish-timeout-ms: 300
     max-total-per-model: 8
     max-idle-per-model: 8
-    idle-timeout-ms: 50000  # 空闲连接驱逐超时
-    eviction-interval-ms: 30000  # 空闲驱逐扫描间隔
+    idle-timeout-ms: 25000
+    eviction-interval-ms: 30000
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:

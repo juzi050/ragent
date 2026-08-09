@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
 /**
- * TTS 流式回调，输出模型配置格式的编码音频
+ * TTS 流式回调
  */
 public interface TtsCallback {
 

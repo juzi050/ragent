@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -166,7 +167,7 @@ class BaiLianTtsClientTest {
         provider.setUrl("https://dashscope.aliyuncs.com");
         provider.setApiKey("test-key");
         provider.setWorkspace("test-workspace");
-        provider.setEndpoints(java.util.Map.of("tts", "/api-ws/v1/inference"));
+        provider.setEndpoints(Map.of("tts", "/api-ws/v1/inference"));
         return new ModelTarget(candidate.getId(), candidate, provider, 1000L);
     }
 

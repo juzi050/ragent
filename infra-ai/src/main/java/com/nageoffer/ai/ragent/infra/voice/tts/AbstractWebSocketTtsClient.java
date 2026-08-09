@@ -25,6 +25,8 @@ import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceStreamCallback;
 import com.nageoffer.ai.ragent.infra.voice.websocket.WebSocketTaskExecutor;
 import com.nageoffer.ai.ragent.infra.voice.websocket.WebSocketTaskSession;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -75,11 +77,11 @@ public abstract class AbstractWebSocketTtsClient<P, C extends VoiceConnection<P,
     /**
      * 按长度上限分块
      */
-    private java.util.List<String> splitChunks(String text) {
+    private List<String> splitChunks(String text) {
         if (text == null || text.isEmpty()) {
-            return java.util.List.of("");
+            return List.of("");
         }
-        java.util.List<String> chunks = new java.util.ArrayList<>();
+        List<String> chunks = new ArrayList<>();
         for (int start = 0; start < text.length(); start += CHUNK_MAX_LEN) {
             String chunk = text.substring(start, Math.min(start + CHUNK_MAX_LEN, text.length()));
             if (!chunk.isBlank()) {

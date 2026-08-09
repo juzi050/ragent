@@ -23,7 +23,7 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 一次 WebSocket 连接借用，负责归还或淘汰
+ * WebSocket 连接租约
  */
 @Slf4j
 public final class WebSocketConnectionLease<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {

@@ -25,7 +25,7 @@ import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 
 /**
- * 一次已启动的 WebSocket 任务，统一管理发送、结束、取消和租约释放
+ * WebSocket 任务会话
  */
 @Slf4j
 public final class WebSocketTaskSession<I> {

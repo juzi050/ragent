@@ -200,7 +200,7 @@ public class BaiLianTtsClient extends AbstractWebSocketTtsClient<
                 case "task-finished" -> markTaskFinished();
                 case "task-failed" -> failTask(header);
                 default -> {
-                    // result-generated 等元信息在此消费，音频数据经二进制帧进入统一回调
+                    // 消费 result-generated 等元信息
                 }
             }
         }
