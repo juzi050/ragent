@@ -262,7 +262,7 @@ class RoutingTtsServiceTest {
         @Override
         public StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
             attempts.incrementAndGet();
-            throw new ModelClientException("pool exhausted", ModelClientErrorType.CAPACITY_EXHAUSTED, null);
+            throw new ModelClientException("pool exhausted", ModelClientErrorType.RATE_LIMITED, null);
         }
     }
 
@@ -273,8 +273,8 @@ class RoutingTtsServiceTest {
         private boolean completed;
 
         @Override
-        public void onAudio(byte[] opusAudio) {
-            audioEvents.add(opusAudio);
+        public void onAudio(byte[] audio) {
+            audioEvents.add(audio);
         }
 
         @Override

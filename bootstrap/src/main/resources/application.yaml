@@ -299,7 +299,6 @@ ai:
         model: cosyvoice-v3-flash
         priority: 1
         voice: longxiaochun_v3  # 默认音色
-        audio-format: mp3  # 音频输出格式
 
   websocket:
     connect-timeout-ms: 10000

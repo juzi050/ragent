@@ -67,6 +67,12 @@ public class RoutingTtsService implements TtsService {
         for (ModelTarget target : targets) {
             TtsClient client = resolveClient(target);
             if (client == null) {
+                lastError = new ModelClientException(
+                        "TTS 提供商客户端缺失，provider=" + target.candidate().getProvider()
+                                + "，modelId=" + target.id(),
+                        ModelClientErrorType.CLIENT_ERROR,
+                        null
+                );
                 continue;
             }
             ModelHealthStore.CallPermit permit = healthStore.allowCall(target.id());
@@ -83,8 +89,8 @@ public class RoutingTtsService implements TtsService {
                     bridge.discard();
                     lastError = exception;
                     if (exception instanceof ModelClientException clientException
-                            && clientException.getErrorType() == ModelClientErrorType.CAPACITY_EXHAUSTED) {
-                        log.warn("TTS 连接池容量不足，modelId={}", target.id());
+                            && clientException.getErrorType() == ModelClientErrorType.RATE_LIMITED) {
+                        log.warn("TTS 暂无可用调用容量，modelId={}", target.id());
                         continue;
                     }
                     healthStore.markFailure(target.id());
@@ -163,7 +169,7 @@ public class RoutingTtsService implements TtsService {
             case ERROR -> result.getError() != null
                     ? result.getError()
                     : new ModelClientException("TTS 流式任务失败，modelId=" + target.id(),
-                    ModelClientErrorType.PROVIDER_ERROR, null);
+                    ModelClientErrorType.SERVER_ERROR, null);
             case TIMEOUT -> new ModelClientException("TTS 首音频超时，modelId=" + target.id(),
                     ModelClientErrorType.NETWORK_ERROR, null);
             case NO_CONTENT -> new ModelClientException("TTS 未返回有效音频，modelId=" + target.id(),

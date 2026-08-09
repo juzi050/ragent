@@ -22,7 +22,11 @@ let appendQueue: Uint8Array[] = [];
 let appendPending = false;
 
 function stopInternal() {
+  const stream = streamRef;
   const taskId = taskIdRef;
+  streamRef = null;
+  taskIdRef = null;
+  stream?.cancel();
   if (taskId) {
     const token = storage.getToken();
     fetch(`${STOP_URL}?taskId=${encodeURIComponent(taskId)}`, {
@@ -30,8 +34,6 @@ function stopInternal() {
       headers: token ? { Authorization: token } : undefined
     }).catch(() => null);
   }
-  streamRef = null;
-  taskIdRef = null;
   if (audioElRef) {
     audioElRef.pause();
     audioElRef.removeAttribute("src");

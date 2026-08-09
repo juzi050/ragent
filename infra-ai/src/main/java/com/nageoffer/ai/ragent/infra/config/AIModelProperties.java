@@ -220,11 +220,6 @@ public class AIModelProperties {
          * 语音类模型默认音色
          */
         private String voice;
-
-        /**
-         * 语音类模型音频输出格式
-         */
-        private String audioFormat;
     }
 
     /**

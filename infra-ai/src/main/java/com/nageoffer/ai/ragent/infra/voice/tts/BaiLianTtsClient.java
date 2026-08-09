@@ -28,28 +28,20 @@ import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnection;
-import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnectionState;
 import jakarta.annotation.PreDestroy;
 import okhttp3.Request;
-import okhttp3.Response;
 import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 import okio.ByteString;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
-import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * 阿里云百炼 CosyVoice TTS 适配器
  */
 @Component
-public class BaiLianTtsClient extends AbstractWsTtsClient<
+public class BaiLianTtsClient extends AbstractWebSocketTtsClient<
         BaiLianTtsClient.BaiLianTtsTaskParam,
         BaiLianTtsClient.BaiLianTtsConnection> {
 
@@ -57,7 +49,7 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
     private final AIModelProperties.WebSocketConfig websocketConfig;
 
     public BaiLianTtsClient(@Qualifier("streamingHttpClient") WebSocket.Factory webSocketFactory,
-                            @Qualifier("wsLifecycleExecutor") Executor taskExecutor,
+                            @Qualifier("webSocketLifecycleExecutor") Executor taskExecutor,
                             AIModelProperties properties) {
         super(taskExecutor, properties.getWebsocket());
         this.webSocketFactory = webSocketFactory;
@@ -77,9 +69,8 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
     @Override
     protected BaiLianTtsTaskParam buildTaskParam(ModelTarget target) {
         return new BaiLianTtsTaskParam(
-                HttpResponseHelper.requireModel(target, "bailian TTS"),
-                requireVoice(target),
-                resolveAudioFormat(target)
+                HttpResponseHelper.requireModel(target, "TTS"),
+                requireVoice(target)
         );
     }
 
@@ -89,18 +80,10 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
     private String requireVoice(ModelTarget target) {
         String voice = target.candidate().getVoice();
         if (voice == null || voice.isBlank()) {
-            throw new ModelClientException("bailian TTS 未配置默认音色，modelId=" + target.id(),
-                    ModelClientErrorType.INVALID_RESPONSE, null);
+            throw new ModelClientException("TTS 未配置默认音色，modelId=" + target.id(),
+                    ModelClientErrorType.CLIENT_ERROR, null);
         }
         return voice;
-    }
-
-    private String resolveAudioFormat(ModelTarget target) {
-        String format = target.candidate().getAudioFormat();
-        if (format == null || format.isBlank()) {
-            format = "opus";
-        }
-        return format;
     }
 
     @PreDestroy
@@ -110,34 +93,25 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
 
     record BaiLianTtsTaskParam(
             String model,
-            String voice,
-            String audioFormat
+            String voice
     ) {
     }
 
     static final class BaiLianTtsConnection
             extends VoiceConnection<BaiLianTtsTaskParam, String, byte[]> {
 
-        private final AIModelProperties.WebSocketConfig websocketConfig;
         private final Gson gson = new Gson();
-        private final CompletableFuture<Void> connectionReady = new CompletableFuture<>();
-
-        private volatile CompletableFuture<Void> taskStarted;
-        private volatile CompletableFuture<Void> taskFinished;
-        /** 最近一次收到音频帧的时间戳 */
-        private volatile long lastFrameReceivedMs;
 
         private BaiLianTtsConnection(ModelTarget target,
                                      WebSocket.Factory webSocketFactory,
                                      AIModelProperties.WebSocketConfig websocketConfig) {
-            super(target, webSocketFactory);
-            this.websocketConfig = websocketConfig;
+            super(target, webSocketFactory, websocketConfig);
         }
 
         @Override
         protected Request buildWebSocketRequest() {
-            AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target(), "bailian TTS");
-            HttpResponseHelper.requireApiKey(provider, "bailian TTS");
+            AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target(), "TTS");
+            HttpResponseHelper.requireApiKey(provider, "TTS");
             String url = toWebSocketUrl(ModelUrlResolver.resolveUrl(provider, target().candidate(), ModelCapability.TTS));
             Request.Builder request = new Request.Builder()
                     .url(url)
@@ -149,24 +123,11 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
         }
 
         @Override
-        protected WebSocketListener createWebSocketListener() {
-            return new Listener();
-        }
-
-        @Override
-        protected void awaitConnectionReady() throws Exception {
-            await(connectionReady, websocketConfig.getConnectTimeoutMs());
-        }
-
-        @Override
         protected void doStartTask(String taskId, BaiLianTtsTaskParam param) {
-            taskStarted = new CompletableFuture<>();
-            taskFinished = new CompletableFuture<>();
-
             JsonObject parameters = new JsonObject();
             parameters.addProperty("text_type", "PlainText");
             parameters.addProperty("voice", param.voice());
-            parameters.addProperty("format", param.audioFormat());
+            parameters.addProperty("format", "mp3");
 
             JsonObject payload = new JsonObject();
             payload.addProperty("task_group", "audio");
@@ -177,11 +138,6 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
             payload.add("input", new JsonObject());
 
             sendJson(command("run-task", taskId, payload));
-        }
-
-        @Override
-        protected void awaitTaskStarted(String taskId) throws Exception {
-            await(taskStarted, websocketConfig.getTaskStartTimeoutMs());
         }
 
         @Override
@@ -209,39 +165,6 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
             sendJson(command("finish-task", taskId, payload));
         }
 
-        @Override
-        protected void awaitTaskTerminated(String taskId) throws Exception {
-            // 帧间空闲超时 音频帧仍到达即不超时
-            long deadline = System.currentTimeMillis() + websocketConfig.getTaskFinishTimeoutMs();
-            while (!taskFinished.isDone()) {
-                long last = lastFrameReceivedMs;
-                if (last > 0) {
-                    deadline = Math.max(deadline, last + websocketConfig.getTaskFinishTimeoutMs());
-                }
-                if (System.currentTimeMillis() > deadline) {
-                    throw new TimeoutException("finish-task 后帧间空闲超时，taskId=" + taskId);
-                }
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw interrupted;
-                }
-            }
-            try {
-                taskFinished.get();
-            } catch (ExecutionException exception) {
-                throwCause(exception);
-            }
-        }
-
-        @Override
-        protected void clearTaskContext() {
-            taskStarted = null;
-            taskFinished = null;
-            lastFrameReceivedMs = 0L;
-        }
-
         private JsonObject command(String action, String taskId, JsonObject payload) {
             JsonObject header = new JsonObject();
             header.addProperty("action", action);
@@ -257,25 +180,24 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
         private void sendJson(JsonObject message) {
             WebSocket current = webSocket();
             if (current == null || !current.send(gson.toJson(message))) {
-                throw new ModelClientException("bailian TTS WebSocket 发送失败",
+                throw new ModelClientException("TTS WebSocket 发送失败，modelId=" + modelId(),
                         ModelClientErrorType.NETWORK_ERROR, null);
             }
         }
 
-        private void handleTextMessage(String text) {
+        @Override
+        protected void handleTextMessage(String text) {
             JsonObject response = gson.fromJson(text, JsonObject.class);
             JsonObject header = response.getAsJsonObject("header");
             if (header == null || !header.has("event")) {
                 return;
             }
-            validateTaskId(header);
+            String responseTaskId = header.has("task_id") ? header.get("task_id").getAsString() : null;
+            validateResponseTaskId(responseTaskId);
             String event = header.get("event").getAsString();
             switch (event) {
-                case "task-started" -> taskStarted.complete(null);
-                case "task-finished" -> {
-                    currentCallback().onComplete();
-                    taskFinished.complete(null);
-                }
+                case "task-started" -> markTaskStarted();
+                case "task-finished" -> markTaskFinished();
                 case "task-failed" -> failTask(header);
                 default -> {
                     // result-generated 等元信息在此消费，音频数据经二进制帧进入统一回调
@@ -283,136 +205,20 @@ public class BaiLianTtsClient extends AbstractWsTtsClient<
             }
         }
 
-        private void validateTaskId(JsonObject header) {
-            String responseTaskId = header.has("task_id") ? header.get("task_id").getAsString() : null;
-            if (!Objects.equals(currentTaskId(), responseTaskId)) {
-                throw new ModelClientException(
-                        "bailian TTS 响应 taskId 不一致，expected=" + currentTaskId() + "，actual=" + responseTaskId,
-                        ModelClientErrorType.INVALID_RESPONSE,
-                        null
-                );
-            }
+        @Override
+        protected byte[] decodeBinaryMessage(ByteString bytes) {
+            return bytes.toByteArray();
         }
 
         private void failTask(JsonObject header) {
-            if (isCancelling()) {
-                // 用户已取消 不再上报任务错误 但 task-failed 连接不可复用
-                markBroken();
-                completeTaskFinishedQuietly();
-                return;
-            }
             String errorCode = header.has("error_code") ? header.get("error_code").getAsString() : "unknown";
             String errorMessage = header.has("error_message") ? header.get("error_message").getAsString() : "unknown";
-            ModelClientException exception = new ModelClientException(
-                    "bailian TTS 任务失败: " + errorCode + " - " + errorMessage,
-                    ModelClientErrorType.PROVIDER_ERROR,
+            markTaskFailed(new ModelClientException(
+                    "TTS 任务失败，modelId=" + modelId() + ": " + errorCode + " - " + errorMessage,
+                    ModelClientErrorType.SERVER_ERROR,
                     null
-            );
-            CompletableFuture<Void> started = taskStarted;
-            if (started != null) {
-                started.completeExceptionally(exception);
-            }
-            CompletableFuture<Void> finished = taskFinished;
-            if (finished != null) {
-                finished.completeExceptionally(exception);
-            }
-            connectionBroken(exception);
+            ));
         }
 
-        private void failConnection(Throwable throwable) {
-            if (isCancelling()) {
-                // 取消过程中连接被关闭 属预期 连接不可复用但不通知上层
-                markBroken();
-                completeTaskFinishedQuietly();
-                return;
-            }
-            connectionReady.completeExceptionally(throwable);
-            CompletableFuture<Void> started = taskStarted;
-            if (started != null) {
-                started.completeExceptionally(throwable);
-            }
-            CompletableFuture<Void> finished = taskFinished;
-            if (finished != null) {
-                finished.completeExceptionally(throwable);
-            }
-            connectionBroken(throwable);
-        }
-
-        private void completeTaskFinishedQuietly() {
-            CompletableFuture<Void> finished = taskFinished;
-            if (finished != null) {
-                finished.complete(null);
-            }
-        }
-
-        private void await(CompletableFuture<Void> future, long timeoutMs) throws Exception {
-            try {
-                future.get(timeoutMs, TimeUnit.MILLISECONDS);
-            } catch (ExecutionException exception) {
-                throwCause(exception);
-            } catch (TimeoutException exception) {
-                throw exception;
-            }
-        }
-
-        private void throwCause(ExecutionException exception) throws Exception {
-            Throwable cause = exception.getCause();
-            if (cause instanceof Exception checkedException) {
-                throw checkedException;
-            }
-            throw new RuntimeException(cause);
-        }
-
-        private String toWebSocketUrl(String url) {
-            if (url.startsWith("https://")) {
-                return "wss://" + url.substring("https://".length());
-            }
-            if (url.startsWith("http://")) {
-                return "ws://" + url.substring("http://".length());
-            }
-            return url;
-        }
-
-        private final class Listener extends WebSocketListener {
-
-            @Override
-            public void onOpen(WebSocket webSocket, Response response) {
-                connectionReady.complete(null);
-            }
-
-            @Override
-            public void onMessage(WebSocket webSocket, String text) {
-                try {
-                    handleTextMessage(text);
-                } catch (RuntimeException exception) {
-                    failConnection(exception);
-                }
-            }
-
-            @Override
-            public void onMessage(WebSocket webSocket, ByteString bytes) {
-                // 刷新帧活动时间
-                lastFrameReceivedMs = System.currentTimeMillis();
-                if (currentCallback() != null) {
-                    currentCallback().onPacket(bytes.toByteArray());
-                }
-            }
-
-            @Override
-            public void onClosed(WebSocket webSocket, int code, String reason) {
-                if (state() != VoiceConnectionState.CLOSED) {
-                    failConnection(new ModelClientException(
-                            "bailian TTS WebSocket 已关闭: " + code + " - " + reason,
-                            ModelClientErrorType.NETWORK_ERROR,
-                            null
-                    ));
-                }
-            }
-
-            @Override
-            public void onFailure(WebSocket webSocket, Throwable throwable, Response response) {
-                failConnection(throwable);
-            }
-        }
     }
 }

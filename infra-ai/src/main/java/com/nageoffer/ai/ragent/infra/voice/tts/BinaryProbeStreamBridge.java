@@ -17,16 +17,30 @@
 
 package com.nageoffer.ai.ragent.infra.voice.tts;
 
-import com.nageoffer.ai.ragent.infra.model.AbstractProbeStreamBridge;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 音频流首包探测桥接器
  */
-final class BinaryProbeStreamBridge extends AbstractProbeStreamBridge implements TtsCallback {
+final class BinaryProbeStreamBridge implements TtsCallback {
+
+    private enum Disposition {
+        PENDING,
+        COMMITTED,
+        DISCARDED
+    }
 
     private final TtsCallback downstream;
+    private final CompletableFuture<ProbeResult> probe = new CompletableFuture<>();
+    private final Object lock = new Object();
+    private final List<Runnable> buffer = new ArrayList<>();
+    private Disposition disposition = Disposition.PENDING;
+    private boolean terminated;
 
     BinaryProbeStreamBridge(TtsCallback downstream) {
         this.downstream = downstream;
@@ -35,21 +49,111 @@ final class BinaryProbeStreamBridge extends AbstractProbeStreamBridge implements
     @Override
     public void onAudio(byte[] audio) {
         if (audio != null && audio.length > 0) {
-            acceptPacket(() -> downstream.onAudio(audio));
+            accept(ProbeResult.success(), false, () -> downstream.onAudio(audio));
         }
     }
 
     @Override
     public void onComplete() {
-        acceptComplete(downstream::onComplete);
+        accept(ProbeResult.noContent(), true, downstream::onComplete);
     }
 
     @Override
     public void onError(Throwable throwable) {
-        acceptError(throwable, () -> downstream.onError(throwable));
+        accept(ProbeResult.error(throwable), true, () -> downstream.onError(throwable));
     }
 
     ProbeResult awaitFirstAudio(long timeout, TimeUnit unit) throws InterruptedException {
-        return awaitProbe(timeout, unit);
+        try {
+            return probe.get(timeout, unit);
+        } catch (TimeoutException exception) {
+            return ProbeResult.timeout();
+        } catch (ExecutionException exception) {
+            return ProbeResult.error(exception.getCause());
+        }
+    }
+
+    void commit() {
+        synchronized (lock) {
+            if (disposition != Disposition.PENDING) {
+                return;
+            }
+            disposition = Disposition.COMMITTED;
+            buffer.forEach(Runnable::run);
+            buffer.clear();
+        }
+    }
+
+    void discard() {
+        synchronized (lock) {
+            if (disposition != Disposition.PENDING) {
+                return;
+            }
+            disposition = Disposition.DISCARDED;
+            buffer.clear();
+        }
+    }
+
+    private void accept(ProbeResult result, boolean terminal, Runnable action) {
+        synchronized (lock) {
+            if (terminated || disposition == Disposition.DISCARDED) {
+                return;
+            }
+            if (terminal) {
+                terminated = true;
+            }
+            probe.complete(result);
+            if (disposition == Disposition.COMMITTED) {
+                action.run();
+            } else {
+                buffer.add(action);
+            }
+        }
+    }
+
+    static final class ProbeResult {
+
+        enum Type {
+            SUCCESS,
+            ERROR,
+            TIMEOUT,
+            NO_CONTENT
+        }
+
+        private final Type type;
+        private final Throwable error;
+
+        private ProbeResult(Type type, Throwable error) {
+            this.type = type;
+            this.error = error;
+        }
+
+        Type getType() {
+            return type;
+        }
+
+        Throwable getError() {
+            return error;
+        }
+
+        boolean isSuccess() {
+            return type == Type.SUCCESS;
+        }
+
+        private static ProbeResult success() {
+            return new ProbeResult(Type.SUCCESS, null);
+        }
+
+        private static ProbeResult error(Throwable throwable) {
+            return new ProbeResult(Type.ERROR, throwable);
+        }
+
+        private static ProbeResult timeout() {
+            return new ProbeResult(Type.TIMEOUT, null);
+        }
+
+        private static ProbeResult noContent() {
+            return new ProbeResult(Type.NO_CONTENT, null);
+        }
     }
 }

@@ -26,14 +26,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 一次 WebSocket 连接借用，负责归还或淘汰
  */
 @Slf4j
-public final class WsConnectionLease<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {
+public final class WebSocketConnectionLease<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {
 
     private final GenericObjectPool<C> pool;
     private final C connection;
     private final AtomicBoolean invalidated = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    WsConnectionLease(GenericObjectPool<C> pool, C connection) {
+    WebSocketConnectionLease(GenericObjectPool<C> pool, C connection) {
         this.pool = pool;
         this.connection = connection;
     }

@@ -58,12 +58,7 @@ public enum ModelClientErrorType {
     /**
      * 供应商错误 - 模型提供商服务错误
      */
-    PROVIDER_ERROR,
-
-    /**
-     * 本地容量不足 - 暂无可用连接或执行资源
-     */
-    CAPACITY_EXHAUSTED;
+    PROVIDER_ERROR;
 
     /**
      * 根据 HTTP 状态码推断错误类型

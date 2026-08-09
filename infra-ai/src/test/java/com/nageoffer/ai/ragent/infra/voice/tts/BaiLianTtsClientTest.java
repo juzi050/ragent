@@ -49,7 +49,7 @@ class BaiLianTtsClientTest {
     private final Gson gson = new Gson();
 
     @Test
-    void sendsMinimalCosyVoiceProtocolAndReturnsOpus() {
+    void sendsMinimalCosyVoiceProtocolAndReturnsMp3() {
         FakeWebSocketFactory factory = new FakeWebSocketFactory();
         BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
         RecordingCallback callback = new RecordingCallback();
@@ -82,7 +82,7 @@ class BaiLianTtsClientTest {
         assertTrue(factory.request.url().isHttps());
         assertEquals("dashscope.aliyuncs.com", factory.request.url().host());
         assertEquals("/api-ws/v1/inference", factory.request.url().encodedPath());
-        assertArrayEquals(FakeWebSocketFactory.OPUS_AUDIO, callback.audio);
+        assertArrayEquals(FakeWebSocketFactory.MP3_AUDIO, callback.audio);
         assertTrue(callback.completed);
 
         handle.cancel();
@@ -95,22 +95,14 @@ class BaiLianTtsClientTest {
         FakeWebSocketFactory factory = new FakeWebSocketFactory();
         BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties());
 
-        String longText = "第一句话。第二句话。第三句话！第四句话？第五句话；";
+        String longText = "测试".repeat(41);
         client.synthesize(longText, new RecordingCallback(), target());
 
-        // run-task + 5 个 continue-task + finish-task
-        assertEquals(List.of("run-task", "continue-task", "continue-task", "continue-task",
-                "continue-task", "continue-task", "finish-task"), factory.actions());
-        // 校验每个 continue-task 的文本块
-        assertEquals("第一句话。", factory.messages.get(1)
+        // run-task + 2 个 continue-task + finish-task
+        assertEquals(List.of("run-task", "continue-task", "continue-task", "finish-task"), factory.actions());
+        assertEquals(longText.substring(0, 80), factory.messages.get(1)
                 .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
-        assertEquals("第二句话。", factory.messages.get(2)
-                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
-        assertEquals("第三句话！", factory.messages.get(3)
-                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
-        assertEquals("第四句话？", factory.messages.get(4)
-                .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
-        assertEquals("第五句话；", factory.messages.get(5)
+        assertEquals(longText.substring(80), factory.messages.get(2)
                 .getAsJsonObject("payload").getAsJsonObject("input").get("text").getAsString());
 
         client.close();
@@ -169,7 +161,6 @@ class BaiLianTtsClientTest {
         candidate.setProvider("bailian");
         candidate.setModel("cosyvoice-v3-flash");
         candidate.setVoice("longxiaochun");
-        candidate.setAudioFormat("mp3");
 
         AIModelProperties.ProviderConfig provider = new AIModelProperties.ProviderConfig();
         provider.setUrl("https://dashscope.aliyuncs.com");
@@ -198,8 +189,8 @@ class BaiLianTtsClientTest {
         private boolean completed;
 
         @Override
-        public void onAudio(byte[] opusAudio) {
-            audio = opusAudio;
+        public void onAudio(byte[] audio) {
+            this.audio = audio;
         }
 
         @Override
@@ -214,7 +205,7 @@ class BaiLianTtsClientTest {
 
     private final class FakeWebSocketFactory implements WebSocket.Factory {
 
-        private static final byte[] OPUS_AUDIO = {79, 112, 117, 115};
+        private static final byte[] MP3_AUDIO = {73, 68, 51};
 
         private final List<JsonObject> messages = new ArrayList<>();
         private final AtomicInteger closeCount = new AtomicInteger();
@@ -301,7 +292,7 @@ class BaiLianTtsClientTest {
                     } else {
                         normalFinish.countDown();
                         if (autoFinish) {
-                            listener.onMessage(this, ByteString.of(OPUS_AUDIO));
+                            listener.onMessage(this, ByteString.of(MP3_AUDIO));
                             listener.onMessage(this, event(taskId, "task-finished"));
                         }
                     }

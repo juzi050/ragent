@@ -28,7 +28,7 @@ import java.util.function.BooleanSupplier;
  * 一次已启动的 WebSocket 任务，统一管理发送、结束、取消和租约释放
  */
 @Slf4j
-public final class WsTaskSession<I> {
+public final class WebSocketTaskSession<I> {
 
     private enum Lifecycle {
         ACTIVE,
@@ -39,16 +39,16 @@ public final class WsTaskSession<I> {
 
     private final String taskId;
     private final VoiceConnection<?, I, ?> connection;
-    private final WsConnectionLease<?> lease;
+    private final WebSocketConnectionLease<?> lease;
     private final Executor taskExecutor;
     private final BooleanSupplier invalidateOnFinish;
     private final CompletableFuture<Void> completion = new CompletableFuture<>();
     private final Object lifecycleLock = new Object();
     private Lifecycle lifecycle = Lifecycle.ACTIVE;
 
-    <P, O, C extends VoiceConnection<P, I, O>> WsTaskSession(String taskId,
+    <P, O, C extends VoiceConnection<P, I, O>> WebSocketTaskSession(String taskId,
                                                              C connection,
-                                                             WsConnectionLease<C> lease,
+                                                             WebSocketConnectionLease<C> lease,
                                                              Executor taskExecutor,
                                                              BooleanSupplier invalidateOnFinish) {
         this.taskId = taskId;

@@ -155,20 +155,20 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                                       AtomicInteger audioFrameCount, AtomicLong audioBytes) {
         return new TtsCallback() {
             @Override
-            public void onAudio(byte[] opusAudio) {
+            public void onAudio(byte[] audio) {
                 if (taskTerminated.get() || taskManager.isCancelled(taskId)) {
                     return;
                 }
-                if (opusAudio == null || opusAudio.length == 0) {
+                if (audio == null || audio.length == 0) {
                     return;
                 }
                 if (metaLogged.compareAndSet(false, true)) {
-                    log.info("播放任务首帧下发，taskId={}，frameBytes={}", taskId, opusAudio.length);
+                    log.info("播放任务首帧下发，taskId={}，frameBytes={}", taskId, audio.length);
                 }
                 audioFrameCount.incrementAndGet();
-                audioBytes.addAndGet(opusAudio.length);
+                audioBytes.addAndGet(audio.length);
                 sender.sendEvent(SSEEventType.AUDIO.value(), new AudioFramePayload(
-                        Base64.getEncoder().encodeToString(opusAudio)));
+                        Base64.getEncoder().encodeToString(audio)));
             }
 
             @Override

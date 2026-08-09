@@ -39,14 +39,14 @@ import java.util.function.Function;
 /**
  * Voice WebSocket 执行器，按 modelId 管理连接池
  */
-public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {
+public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> implements AutoCloseable {
 
     private final Function<ModelTarget, C> connectionFactory;
     private final AIModelProperties.WebSocketConfig config;
     private final Map<String, GenericObjectPool<C>> poolsByModelId = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    public WsExecutor(Function<ModelTarget, C> connectionFactory,
+    public WebSocketExecutor(Function<ModelTarget, C> connectionFactory,
                       AIModelProperties.WebSocketConfig config) {
         this.connectionFactory = connectionFactory;
         this.config = config;
@@ -55,7 +55,7 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
     /**
      * 从 modelId 对应连接池借用一条空闲 WebSocket
      */
-    public WsConnectionLease<C> acquire(ModelTarget target) {
+    public WebSocketConnectionLease<C> acquire(ModelTarget target) {
         if (closed.get()) {
             throw new IllegalStateException("Voice 连接池已关闭");
         }
@@ -64,19 +64,19 @@ public final class WsExecutor<C extends VoiceConnection<?, ?, ?>> implements Aut
         GenericObjectPool<C> pool = poolsByModelId.computeIfAbsent(modelId, ignored -> createPool(target));
         try {
             C connection = pool.borrowObject();
-            return new WsConnectionLease<>(pool, connection);
+            return new WebSocketConnectionLease<>(pool, connection);
         } catch (NoSuchElementException exception) {
             Throwable cause = exception.getCause();
             // 池满（无 cause）是容量信号；create 失败（有 cause）是建连故障，透传走正常故障分类
             if (cause == null) {
                 throw new ModelClientException("Voice 连接池无可用连接，modelId=" + modelId,
-                        ModelClientErrorType.CAPACITY_EXHAUSTED, null, exception);
+                        ModelClientErrorType.RATE_LIMITED, null, exception);
             }
             if (cause instanceof ModelClientException modelClientException) {
                 throw modelClientException;
             }
             throw new ModelClientException("Voice 连接创建失败，modelId=" + modelId,
-                    ModelClientErrorType.PROVIDER_ERROR, null, cause);
+                    ModelClientErrorType.NETWORK_ERROR, null, cause);
         } catch (Exception exception) {
             if (exception instanceof RuntimeException runtimeException) {
                 throw runtimeException;

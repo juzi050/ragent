@@ -177,7 +177,7 @@ public class ThreadPoolExecutorConfig {
      * Voice WebSocket 任务收尾线程池
      */
     @Bean
-    public Executor wsLifecycleExecutor() {
+    public Executor webSocketLifecycleExecutor() {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 2,
                 32,
@@ -185,7 +185,7 @@ public class ThreadPoolExecutorConfig {
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
                 ThreadFactoryBuilder.create()
-                        .setNamePrefix("ws_lifecycle_executor_")
+                        .setNamePrefix("websocket_lifecycle_executor_")
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy()
         );

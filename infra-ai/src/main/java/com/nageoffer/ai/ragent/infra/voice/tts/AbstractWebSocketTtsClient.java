@@ -22,8 +22,8 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceConnection;
 import com.nageoffer.ai.ragent.infra.voice.websocket.VoiceStreamCallback;
-import com.nageoffer.ai.ragent.infra.voice.websocket.WsTaskExecutor;
-import com.nageoffer.ai.ragent.infra.voice.websocket.WsTaskSession;
+import com.nageoffer.ai.ragent.infra.voice.websocket.WebSocketTaskExecutor;
+import com.nageoffer.ai.ragent.infra.voice.websocket.WebSocketTaskSession;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 基于 WebSocket 的 TTS 供应商公共模板
  */
-public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String, byte[]>>
+public abstract class AbstractWebSocketTtsClient<P, C extends VoiceConnection<P, String, byte[]>>
         implements TtsClient, AutoCloseable {
 
     /**
@@ -39,17 +39,17 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
      */
     private static final int CHUNK_MAX_LEN = 80;
 
-    private final WsTaskExecutor<P, String, byte[], C> taskExecutor;
+    private final WebSocketTaskExecutor<P, String, byte[], C> taskExecutor;
 
-    protected AbstractWsTtsClient(Executor executor, AIModelProperties.WebSocketConfig poolConfig) {
-        this.taskExecutor = new WsTaskExecutor<>(this::createConnection, poolConfig, executor);
+    protected AbstractWebSocketTtsClient(Executor executor, AIModelProperties.WebSocketConfig poolConfig) {
+        this.taskExecutor = new WebSocketTaskExecutor<>(this::createConnection, poolConfig, executor);
     }
 
     @Override
     public final StreamCancellationHandle synthesize(String text, TtsCallback callback, ModelTarget target) {
         AtomicBoolean audioReceived = new AtomicBoolean();
-        VoiceStreamCallback<byte[]> streamCallback = adaptCallback(callback, target, audioReceived);
-        WsTaskSession<String> session = taskExecutor.openTask(
+        VoiceStreamCallback<byte[]> streamCallback = adaptCallback(callback, audioReceived);
+        WebSocketTaskSession<String> session = taskExecutor.openTask(
                 target,
                 buildTaskParam(target),
                 streamCallback,
@@ -73,42 +73,27 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
     }
 
     /**
-     * 按句子边界分块 达到长度上限即切分
+     * 按长度上限分块
      */
     private java.util.List<String> splitChunks(String text) {
         if (text == null || text.isEmpty()) {
             return java.util.List.of("");
         }
         java.util.List<String> chunks = new java.util.ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            current.append(c);
-            if (isSentenceBoundary(c) || current.length() >= CHUNK_MAX_LEN) {
-                chunks.add(current.toString());
-                current.setLength(0);
+        for (int start = 0; start < text.length(); start += CHUNK_MAX_LEN) {
+            String chunk = text.substring(start, Math.min(start + CHUNK_MAX_LEN, text.length()));
+            if (!chunk.isBlank()) {
+                chunks.add(chunk);
             }
         }
-        if (current.length() > 0) {
-            chunks.add(current.toString());
-        }
-        return chunks.stream().filter(chunk -> !chunk.isBlank()).toList();
-    }
-
-    private boolean isSentenceBoundary(char c) {
-        return c == '。' || c == '！' || c == '？' || c == '；' || c == '…' || c == '\n';
+        return chunks;
     }
 
     protected abstract P buildTaskParam(ModelTarget target);
 
     protected abstract C createConnection(ModelTarget target);
 
-    protected byte[] convertAudio(byte[] providerAudio, ModelTarget target) {
-        return providerAudio;
-    }
-
     private VoiceStreamCallback<byte[]> adaptCallback(TtsCallback callback,
-                                                       ModelTarget target,
                                                        AtomicBoolean audioReceived) {
         return new VoiceStreamCallback<>() {
             @Override
@@ -116,7 +101,7 @@ public abstract class AbstractWsTtsClient<P, C extends VoiceConnection<P, String
                 if (packet.length > 0) {
                     audioReceived.set(true);
                 }
-                callback.onAudio(convertAudio(packet, target));
+                callback.onAudio(packet);
             }
 
             @Override

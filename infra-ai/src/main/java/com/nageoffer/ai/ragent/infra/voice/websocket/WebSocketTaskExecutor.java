@@ -28,27 +28,27 @@ import java.util.function.Function;
 /**
  * 在池化 WebSocket 连接上启动一次独立任务
  */
-public class WsTaskExecutor<P, I, O, C extends VoiceConnection<P, I, O>> implements AutoCloseable {
+public class WebSocketTaskExecutor<P, I, O, C extends VoiceConnection<P, I, O>> implements AutoCloseable {
 
-    private final WsExecutor<C> wsExecutor;
+    private final WebSocketExecutor<C> webSocketExecutor;
     private final Executor taskExecutor;
 
-    public WsTaskExecutor(Function<ModelTarget, C> connectionFactory,
+    public WebSocketTaskExecutor(Function<ModelTarget, C> connectionFactory,
                           AIModelProperties.WebSocketConfig poolConfig,
                           Executor taskExecutor) {
-        this.wsExecutor = new WsExecutor<>(connectionFactory, poolConfig);
+        this.webSocketExecutor = new WebSocketExecutor<>(connectionFactory, poolConfig);
         this.taskExecutor = taskExecutor;
     }
 
-    public WsTaskSession<I> openTask(ModelTarget target,
+    public WebSocketTaskSession<I> openTask(ModelTarget target,
                                      P taskParam,
                                      VoiceStreamCallback<O> callback,
                                      BooleanSupplier invalidateOnFinish) {
-        WsConnectionLease<C> lease = wsExecutor.acquire(target);
+        WebSocketConnectionLease<C> lease = webSocketExecutor.acquire(target);
         String taskId = generateTaskId();
         try {
             lease.connection().startTask(taskId, taskParam, callback);
-            return new WsTaskSession<>(taskId, lease.connection(), lease, taskExecutor, invalidateOnFinish);
+            return new WebSocketTaskSession<>(taskId, lease.connection(), lease, taskExecutor, invalidateOnFinish);
         } catch (RuntimeException exception) {
             lease.invalidate();
             lease.close();
@@ -62,6 +62,6 @@ public class WsTaskExecutor<P, I, O, C extends VoiceConnection<P, I, O>> impleme
 
     @Override
     public void close() {
-        wsExecutor.close();
+        webSocketExecutor.close();
     }
 }
