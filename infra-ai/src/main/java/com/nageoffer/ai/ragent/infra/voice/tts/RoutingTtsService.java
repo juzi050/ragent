@@ -98,13 +98,6 @@ public class RoutingTtsService implements TtsService {
                             target.id(), target.candidate().getProvider(), exception);
                     continue;
                 }
-                if (handle == null) {
-                    bridge.discard();
-                    healthStore.markFailure(target.id());
-                    lastError = new ModelClientException("TTS 供应商未返回任务句柄，modelId=" + target.id(),
-                            ModelClientErrorType.INVALID_RESPONSE, null);
-                    continue;
-                }
 
                 taskObserver.onTaskStarted(handle);
                 if (taskObserver.isCancelled()) {
@@ -117,15 +110,24 @@ public class RoutingTtsService implements TtsService {
                     bridge.discard();
                     return handle;
                 }
-                if (result.isSuccess()) {
-                    healthStore.markSuccess(target.id());
-                    bridge.commit();
-                    return handle;
+                switch (result.getType()) {
+                    case SUCCESS -> {
+                        healthStore.markSuccess(target.id());
+                        bridge.commit();
+                        return handle;
+                    }
+                    case ERROR -> lastError = result.getError() != null
+                            ? result.getError()
+                            : new ModelClientException("TTS 流式任务失败，modelId=" + target.id(),
+                            ModelClientErrorType.SERVER_ERROR, null);
+                    case TIMEOUT -> lastError = new ModelClientException("TTS 首音频超时，modelId=" + target.id(),
+                            ModelClientErrorType.NETWORK_ERROR, null);
+                    case NO_CONTENT -> lastError = new ModelClientException("TTS 未返回有效音频，modelId=" + target.id(),
+                            ModelClientErrorType.INVALID_RESPONSE, null);
                 }
 
                 bridge.discard();
                 healthStore.markFailure(target.id());
-                lastError = buildFailure(target, result);
                 cancelQuietly(handle, target);
                 log.warn("TTS 首音频确认失败，modelId={}，type={}",
                         target.id(), result.getType(), lastError);
@@ -162,20 +164,6 @@ public class RoutingTtsService implements TtsService {
             cancelQuietly(handle, target);
             throw interrupted;
         }
-    }
-
-    private Throwable buildFailure(ModelTarget target, BinaryProbeStreamBridge.ProbeResult result) {
-        return switch (result.getType()) {
-            case ERROR -> result.getError() != null
-                    ? result.getError()
-                    : new ModelClientException("TTS 流式任务失败，modelId=" + target.id(),
-                    ModelClientErrorType.SERVER_ERROR, null);
-            case TIMEOUT -> new ModelClientException("TTS 首音频超时，modelId=" + target.id(),
-                    ModelClientErrorType.NETWORK_ERROR, null);
-            case NO_CONTENT -> new ModelClientException("TTS 未返回有效音频，modelId=" + target.id(),
-                    ModelClientErrorType.INVALID_RESPONSE, null);
-            case SUCCESS -> throw new IllegalArgumentException("成功结果不应构建失败异常");
-        };
     }
 
     private RuntimeException notifyAllFailed(TtsCallback callback, Throwable lastError) {

@@ -105,6 +105,19 @@ rag:
       lease-seconds: 30
       poll-interval-ms: 200
 
+  voice:
+    executors:
+      websocket-lifecycle:
+        core-pool-size: 2
+        max-pool-size: 32
+        keep-alive-seconds: 60
+        thread-name-prefix: websocket_lifecycle_executor_
+      playback:
+        core-pool-size: 2
+        max-pool-size: 8
+        keep-alive-seconds: 60
+        thread-name-prefix: voice_playback_executor_
+
   memory:
     history-keep-turns: 8
     summary-enabled: true
@@ -303,7 +316,7 @@ ai:
   websocket:
     connect-timeout-ms: 10000
     task-start-timeout-ms: 10000
-    task-finish-timeout-ms: 300
+    task-packet-idle-timeout-ms: 10000
     max-total-per-model: 8
     max-idle-per-model: 8
     idle-timeout-ms: 25000

@@ -43,15 +43,14 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     private final ModelTarget target;
     private final WebSocket.Factory webSocketFactory;
     private final AIModelProperties.WebSocketConfig webSocketConfig;
-    private final AtomicBoolean connectStarted = new AtomicBoolean();
     private final AtomicReference<VoiceConnectionState> state = new AtomicReference<>(VoiceConnectionState.CONNECTING);
     private final AtomicReference<String> currentTaskId = new AtomicReference<>();
     private final AtomicReference<VoiceStreamCallback<O>> currentCallback = new AtomicReference<>();
-    private final AtomicBoolean taskErrorNotified = new AtomicBoolean();
     private final AtomicBoolean cancelling = new AtomicBoolean();
     private final CompletableFuture<Void> connectionReady = new CompletableFuture<>();
     private volatile CompletableFuture<Void> taskStarted;
     private volatile CompletableFuture<Void> taskFinished;
+    private final AtomicReference<CompletableFuture<Void>> packetReceivedSignal = new AtomicReference<>();
     private volatile long lastPacketReceivedMs;
     private volatile WebSocket webSocket;
 
@@ -67,9 +66,6 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
      * 建立 WebSocket 并完成连接级初始化
      */
     public final void connect() {
-        if (!connectStarted.compareAndSet(false, true)) {
-            throw new IllegalStateException("Voice 连接只能建立一次，modelId=" + modelId());
-        }
         try {
             openWebSocket();
             await(connectionReady, webSocketConfig.getConnectTimeoutMs());
@@ -91,9 +87,9 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
         }
         currentTaskId.set(taskId);
         currentCallback.set(callback);
-        taskErrorNotified.set(false);
         taskStarted = new CompletableFuture<>();
         taskFinished = new CompletableFuture<>();
+        packetReceivedSignal.set(new CompletableFuture<>());
         lastPacketReceivedMs = 0L;
         try {
             doStartTask(taskId, param);
@@ -188,7 +184,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     public final boolean isReusable() {
-        return state.get() == VoiceConnectionState.IDLE && currentTaskId.get() == null;
+        return state.get() == VoiceConnectionState.IDLE;
     }
 
     /**
@@ -348,23 +344,44 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
 
     private void awaitTaskTerminated(String taskId) throws Exception {
         CompletableFuture<Void> finished = taskFinished;
-        long deadline = System.currentTimeMillis() + webSocketConfig.getTaskFinishTimeoutMs();
+        long frameIdleTimeoutMs = webSocketConfig.getTaskPacketIdleTimeoutMs();
+        Long configuredFirstPacketTimeoutMs = target.timeoutMs();
+        long firstPacketTimeoutMs = configuredFirstPacketTimeoutMs != null
+                ? configuredFirstPacketTimeoutMs
+                : frameIdleTimeoutMs;
+        long waitStartedMs = System.currentTimeMillis();
+        long firstPacketDeadline = waitStartedMs + firstPacketTimeoutMs;
+        long minimumFinishDeadline = waitStartedMs + frameIdleTimeoutMs;
+        CompletableFuture<Void> terminationSignal = finished.handle((ignored, throwable) -> null);
         while (!finished.isDone()) {
+            CompletableFuture<Void> packetSignal = packetReceivedSignal.get();
             long last = lastPacketReceivedMs;
-            if (last > 0) {
-                deadline = Math.max(deadline, last + webSocketConfig.getTaskFinishTimeoutMs());
-            }
-            if (System.currentTimeMillis() > deadline) {
-                throw new TimeoutException("finish-task 后帧间空闲超时，taskId=" + taskId);
+            long deadline = last > 0
+                    ? Math.max(minimumFinishDeadline, last + frameIdleTimeoutMs)
+                    : firstPacketDeadline;
+            long remainingMs = deadline - System.currentTimeMillis();
+            if (remainingMs <= 0) {
+                if (finished.isDone() || last != lastPacketReceivedMs) {
+                    continue;
+                }
+                String phase = last > 0 ? "帧间空闲" : "首帧等待";
+                throw new TimeoutException("finish-task 后" + phase + "超时，taskId=" + taskId);
             }
             try {
-                Thread.sleep(50);
+                CompletableFuture.anyOf(terminationSignal, packetSignal)
+                        .get(remainingMs, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException ignored) {
+                // 回到循环使用最新的收帧时间判断，避免超时与新帧到达竞态
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw interrupted;
+            } finally {
+                if (packetSignal.isDone()) {
+                    packetReceivedSignal.compareAndSet(packetSignal, new CompletableFuture<>());
+                }
             }
         }
-        await(finished, webSocketConfig.getTaskFinishTimeoutMs());
+        await(finished, frameIdleTimeoutMs);
     }
 
     private void await(CompletableFuture<Void> future, long timeoutMs) throws Exception {
@@ -400,7 +417,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
 
     private void notifyTaskError(Throwable throwable) {
         VoiceStreamCallback<O> callback = currentCallback.get();
-        if (callback != null && taskErrorNotified.compareAndSet(false, true)) {
+        if (callback != null) {
             callback.onError(throwable);
         }
     }
@@ -422,10 +439,10 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     private void resetTaskContext() {
         taskStarted = null;
         taskFinished = null;
+        packetReceivedSignal.set(null);
         lastPacketReceivedMs = 0L;
         currentTaskId.set(null);
         currentCallback.set(null);
-        taskErrorNotified.set(false);
     }
 
     private void requireCurrentTask(String taskId, VoiceConnectionState... allowedStates) {
@@ -463,6 +480,10 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
         public void onMessage(WebSocket webSocket, ByteString bytes) {
             try {
                 lastPacketReceivedMs = System.currentTimeMillis();
+                CompletableFuture<Void> packetSignal = packetReceivedSignal.get();
+                if (packetSignal != null) {
+                    packetSignal.complete(null);
+                }
                 O packet = decodeBinaryMessage(bytes);
                 VoiceStreamCallback<O> callback = currentCallback.get();
                 if (callback != null) {

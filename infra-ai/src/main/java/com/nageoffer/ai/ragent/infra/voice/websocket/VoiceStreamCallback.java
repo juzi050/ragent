@@ -20,7 +20,7 @@ package com.nageoffer.ai.ragent.infra.voice.websocket;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 流式回调保证完成与失败互斥且只通知一次
+ * 流式回调
  */
 public abstract class VoiceStreamCallback<E> {
 
@@ -30,14 +30,14 @@ public abstract class VoiceStreamCallback<E> {
      * 接收业务数据包
      */
     public final void onPacket(E packet) {
-        if (packet == null || terminated.get()) {
+        if (terminated.get()) {
             return;
         }
         onValidPacket(packet);
     }
 
     /**
-     * 任务正常完成且与失败事件互斥
+     * 任务正常完成
      */
     public final void onComplete() {
         if (terminated.compareAndSet(false, true)) {
@@ -46,7 +46,7 @@ public abstract class VoiceStreamCallback<E> {
     }
 
     /**
-     * 任务失败且与完成事件互斥
+     * 任务失败
      */
     public final void onError(Throwable throwable) {
         if (terminated.compareAndSet(false, true)) {

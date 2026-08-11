@@ -48,7 +48,7 @@ final class BinaryProbeStreamBridge implements TtsCallback {
 
     @Override
     public void onAudio(byte[] audio) {
-        if (audio != null && audio.length > 0) {
+        if (audio.length > 0) {
             accept(ProbeResult.success(), false, () -> downstream.onAudio(audio));
         }
     }

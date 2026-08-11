@@ -78,9 +78,6 @@ public abstract class AbstractWebSocketTtsClient<P, C extends VoiceConnection<P,
      * 按长度上限分块
      */
     private List<String> splitChunks(String text) {
-        if (text == null || text.isEmpty()) {
-            return List.of("");
-        }
         List<String> chunks = new ArrayList<>();
         for (int start = 0; start < text.length(); start += CHUNK_MAX_LEN) {
             String chunk = text.substring(start, Math.min(start + CHUNK_MAX_LEN, text.length()));

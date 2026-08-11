@@ -159,9 +159,6 @@ public class VoicePlaybackServiceImpl implements VoicePlaybackService {
                 if (taskTerminated.get() || taskManager.isCancelled(taskId)) {
                     return;
                 }
-                if (audio == null || audio.length == 0) {
-                    return;
-                }
                 if (metaLogged.compareAndSet(false, true)) {
                     log.info("播放任务首帧下发，taskId={}，frameBytes={}", taskId, audio.length);
                 }

@@ -52,7 +52,7 @@ public final class WebSocketConnectionLease<C extends VoiceConnection<?, ?, ?>> 
             return;
         }
         try {
-            if (!invalidated.get() && connection.isReusable()) {
+            if (!invalidated.get()) {
                 pool.returnObject(connection);
             } else {
                 pool.invalidateObject(connection);

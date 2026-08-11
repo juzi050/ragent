@@ -105,19 +105,12 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
         return new GenericObjectPool<>(new BasePooledObjectFactory<>() {
             @Override
             public C create() throws Exception {
-                C connection = null;
+                C connection = connectionFactory.apply(target);
                 try {
-                    connection = connectionFactory.apply(target);
-                    if (!modelId.equals(connection.modelId())) {
-                        throw new IllegalStateException("VoiceConnection 的 modelId 与连接池不一致，pool="
-                                + modelId + "，connection=" + connection.modelId());
-                    }
                     connection.connect();
                     return connection;
                 } catch (Exception exception) {
-                    if (connection != null) {
-                        closeQuietly(connection);
-                    }
+                    closeQuietly(connection);
                     throw exception;
                 }
             }
@@ -129,8 +122,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
 
             @Override
             public boolean validateObject(PooledObject<C> pooledObject) {
-                C connection = pooledObject.getObject();
-                return modelId.equals(connection.modelId()) && connection.isReusable();
+                return pooledObject.getObject().isReusable();
             }
 
             @Override

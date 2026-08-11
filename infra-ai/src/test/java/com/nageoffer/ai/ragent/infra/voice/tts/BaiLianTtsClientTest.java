@@ -42,6 +42,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -110,6 +112,64 @@ class BaiLianTtsClientTest {
     }
 
     @Test
+    void waitsForFirstAudioUsingTtsTimeout() {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory(true, false, 450L, 0L);
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties(300L));
+        RecordingCallback callback = new RecordingCallback();
+
+        client.synthesize("延迟首帧", callback, target());
+
+        assertArrayEquals(FakeWebSocketFactory.MP3_AUDIO, callback.audio);
+        assertTrue(callback.completed);
+        assertNull(callback.error);
+        client.close();
+    }
+
+    @Test
+    void keepsFullFinishGraceWhenAudioArrivesBeforeFinishDirective() {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory(
+                true, false, 0L, 200L, true, 200L);
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties(300L));
+        RecordingCallback callback = new RecordingCallback();
+
+        client.synthesize("提前返回音频", callback, target());
+
+        assertArrayEquals(FakeWebSocketFactory.MP3_AUDIO, callback.audio);
+        assertTrue(callback.completed);
+        assertNull(callback.error);
+        client.close();
+    }
+
+    @Test
+    void renewsFinishWaitForEveryAudioFrame() {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory(
+                true, false, 0L, 200L, 3, 200L);
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties(300L));
+        RecordingCallback callback = new RecordingCallback();
+
+        client.synthesize("持续流式返回音频", callback, target());
+
+        assertArrayEquals(FakeWebSocketFactory.MP3_AUDIO, callback.audio);
+        assertTrue(callback.completed);
+        assertNull(callback.error);
+        client.close();
+    }
+
+    @Test
+    void timesOutWhenAudioFrameGapExceedsConfiguredIdleTimeout() {
+        FakeWebSocketFactory factory = new FakeWebSocketFactory(true, false, 0L, 450L);
+        BaiLianTtsClient client = new BaiLianTtsClient(factory, Runnable::run, properties(300L));
+        RecordingCallback callback = new RecordingCallback();
+
+        client.synthesize("帧间超时", callback, target());
+
+        assertArrayEquals(FakeWebSocketFactory.MP3_AUDIO, callback.audio);
+        assertFalse(callback.completed);
+        assertNotNull(callback.error);
+        client.close();
+    }
+
+    @Test
     void sendsCancelDirectiveBeforeFirstAudio() throws Exception {
         FakeWebSocketFactory factory = new FakeWebSocketFactory(false);
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -172,10 +232,14 @@ class BaiLianTtsClientTest {
     }
 
     private AIModelProperties properties() {
+        return properties(1000L);
+    }
+
+    private AIModelProperties properties(long taskPacketIdleTimeoutMs) {
         AIModelProperties.WebSocketConfig config = new AIModelProperties.WebSocketConfig();
         config.setConnectTimeoutMs(1000L);
         config.setTaskStartTimeoutMs(1000L);
-        config.setTaskFinishTimeoutMs(1000L);
+        config.setTaskPacketIdleTimeoutMs(taskPacketIdleTimeoutMs);
         config.setMaxTotalPerModel(1);
         config.setMaxIdlePerModel(1);
 
@@ -188,6 +252,7 @@ class BaiLianTtsClientTest {
 
         private byte[] audio;
         private boolean completed;
+        private Throwable error;
 
         @Override
         public void onAudio(byte[] audio) {
@@ -201,6 +266,7 @@ class BaiLianTtsClientTest {
 
         @Override
         public void onError(Throwable throwable) {
+            error = throwable;
         }
     }
 
@@ -213,19 +279,57 @@ class BaiLianTtsClientTest {
         private final CountDownLatch normalFinish = new CountDownLatch(1);
         private final boolean autoFinish;
         private final boolean failOnCancel;
+        private final long firstAudioDelayMs;
+        private final long finishDelayMs;
+        private final boolean audioBeforeFinish;
+        private final long continueTaskDelayMs;
+        private final int audioFrameCount;
+        private final long audioFrameIntervalMs;
         private Request request;
 
         private FakeWebSocketFactory() {
-            this(true, false);
+            this(true, false, 0L, 0L);
         }
 
         private FakeWebSocketFactory(boolean autoFinish) {
-            this(autoFinish, false);
+            this(autoFinish, false, 0L, 0L);
         }
 
         private FakeWebSocketFactory(boolean autoFinish, boolean failOnCancel) {
+            this(autoFinish, failOnCancel, 0L, 0L);
+        }
+
+        private FakeWebSocketFactory(boolean autoFinish, boolean failOnCancel,
+                                     long firstAudioDelayMs, long finishDelayMs) {
+            this(autoFinish, failOnCancel, firstAudioDelayMs, finishDelayMs, false, 0L, 1, 0L);
+        }
+
+        private FakeWebSocketFactory(boolean autoFinish, boolean failOnCancel,
+                                     long firstAudioDelayMs, long finishDelayMs,
+                                     boolean audioBeforeFinish, long continueTaskDelayMs) {
+            this(autoFinish, failOnCancel, firstAudioDelayMs, finishDelayMs,
+                    audioBeforeFinish, continueTaskDelayMs, 1, 0L);
+        }
+
+        private FakeWebSocketFactory(boolean autoFinish, boolean failOnCancel,
+                                     long firstAudioDelayMs, long finishDelayMs,
+                                     int audioFrameCount, long audioFrameIntervalMs) {
+            this(autoFinish, failOnCancel, firstAudioDelayMs, finishDelayMs,
+                    false, 0L, audioFrameCount, audioFrameIntervalMs);
+        }
+
+        private FakeWebSocketFactory(boolean autoFinish, boolean failOnCancel,
+                                     long firstAudioDelayMs, long finishDelayMs,
+                                     boolean audioBeforeFinish, long continueTaskDelayMs,
+                                     int audioFrameCount, long audioFrameIntervalMs) {
             this.autoFinish = autoFinish;
             this.failOnCancel = failOnCancel;
+            this.firstAudioDelayMs = firstAudioDelayMs;
+            this.finishDelayMs = finishDelayMs;
+            this.audioBeforeFinish = audioBeforeFinish;
+            this.continueTaskDelayMs = continueTaskDelayMs;
+            this.audioFrameCount = audioFrameCount;
+            this.audioFrameIntervalMs = audioFrameIntervalMs;
         }
 
         @Override
@@ -286,6 +390,9 @@ class BaiLianTtsClientTest {
                 String taskId = message.getAsJsonObject("header").get("task_id").getAsString();
                 if ("run-task".equals(action)) {
                     listener.onMessage(this, event(taskId, "task-started"));
+                } else if ("continue-task".equals(action) && audioBeforeFinish) {
+                    listener.onMessage(this, ByteString.of(MP3_AUDIO));
+                    sleep(continueTaskDelayMs);
                 } else if ("finish-task".equals(action)) {
                     JsonObject input = message.getAsJsonObject("payload").getAsJsonObject("input");
                     if (input.has("directive")) {
@@ -293,12 +400,45 @@ class BaiLianTtsClientTest {
                     } else {
                         normalFinish.countDown();
                         if (autoFinish) {
-                            listener.onMessage(this, ByteString.of(MP3_AUDIO));
-                            listener.onMessage(this, event(taskId, "task-finished"));
+                            respondWithAudio(taskId);
                         }
                     }
                 }
                 return true;
+            }
+
+            private void respondWithAudio(String taskId) {
+                Runnable response = () -> {
+                    if (!audioBeforeFinish) {
+                        sleep(firstAudioDelayMs);
+                        for (int frame = 0; frame < audioFrameCount; frame++) {
+                            if (frame > 0) {
+                                sleep(audioFrameIntervalMs);
+                            }
+                            listener.onMessage(this, ByteString.of(MP3_AUDIO));
+                        }
+                    }
+                    sleep(finishDelayMs);
+                    listener.onMessage(this, event(taskId, "task-finished"));
+                };
+                if (firstAudioDelayMs == 0L && finishDelayMs == 0L) {
+                    response.run();
+                    return;
+                }
+                Thread responseThread = new Thread(response, "fake-tts-response");
+                responseThread.setDaemon(true);
+                responseThread.start();
+            }
+
+            private void sleep(long delayMs) {
+                if (delayMs <= 0L) {
+                    return;
+                }
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
             @Override

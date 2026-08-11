@@ -60,9 +60,6 @@ public final class WebSocketTaskSession<I> {
 
     public void send(I input) {
         synchronized (lifecycleLock) {
-            if (lifecycle != Lifecycle.ACTIVE) {
-                throw new IllegalStateException("WebSocket 任务已进入收尾阶段，taskId=" + taskId);
-            }
             connection.send(taskId, input);
         }
     }

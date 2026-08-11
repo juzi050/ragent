@@ -133,7 +133,7 @@ public class AIModelProperties {
 
         private long taskStartTimeoutMs;
 
-        private long taskFinishTimeoutMs;
+        private long taskPacketIdleTimeoutMs;
 
         private int maxTotalPerModel;
 

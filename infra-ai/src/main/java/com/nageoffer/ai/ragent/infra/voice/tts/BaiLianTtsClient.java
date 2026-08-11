@@ -179,7 +179,7 @@ public class BaiLianTtsClient extends AbstractWebSocketTtsClient<
 
         private void sendJson(JsonObject message) {
             WebSocket current = webSocket();
-            if (current == null || !current.send(gson.toJson(message))) {
+            if (!current.send(gson.toJson(message))) {
                 throw new ModelClientException("TTS WebSocket 发送失败，modelId=" + modelId(),
                         ModelClientErrorType.NETWORK_ERROR, null);
             }

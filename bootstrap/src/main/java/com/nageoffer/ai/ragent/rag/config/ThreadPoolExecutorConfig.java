@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.config;
 
 import cn.hutool.core.thread.ThreadFactoryBuilder;
 import com.alibaba.ttl.threadpool.TtlExecutors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -177,15 +178,19 @@ public class ThreadPoolExecutorConfig {
      * Voice WebSocket 任务收尾线程池
      */
     @Bean
-    public Executor webSocketLifecycleExecutor() {
+    public Executor webSocketLifecycleExecutor(
+            @Value("${rag.voice.executors.websocket-lifecycle.core-pool-size}") int corePoolSize,
+            @Value("${rag.voice.executors.websocket-lifecycle.max-pool-size}") int maxPoolSize,
+            @Value("${rag.voice.executors.websocket-lifecycle.keep-alive-seconds}") long keepAliveSeconds,
+            @Value("${rag.voice.executors.websocket-lifecycle.thread-name-prefix}") String threadNamePrefix) {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                2,
-                32,
-                60,
+                corePoolSize,
+                maxPoolSize,
+                keepAliveSeconds,
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
                 ThreadFactoryBuilder.create()
-                        .setNamePrefix("websocket_lifecycle_executor_")
+                        .setNamePrefix(threadNamePrefix)
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy()
         );
@@ -197,15 +202,19 @@ public class ThreadPoolExecutorConfig {
      * 消息语音播放合成线程池
      */
     @Bean
-    public Executor voicePlaybackExecutor() {
+    public Executor voicePlaybackExecutor(
+            @Value("${rag.voice.executors.playback.core-pool-size}") int corePoolSize,
+            @Value("${rag.voice.executors.playback.max-pool-size}") int maxPoolSize,
+            @Value("${rag.voice.executors.playback.keep-alive-seconds}") long keepAliveSeconds,
+            @Value("${rag.voice.executors.playback.thread-name-prefix}") String threadNamePrefix) {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                2,
-                8,
-                60,
+                corePoolSize,
+                maxPoolSize,
+                keepAliveSeconds,
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
                 ThreadFactoryBuilder.create()
-                        .setNamePrefix("voice_playback_executor_")
+                        .setNamePrefix(threadNamePrefix)
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy()
         );
