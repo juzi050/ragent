@@ -121,14 +121,14 @@ function playInternal(messageId: string) {
   mediaSource.addEventListener("sourceopen", () => {
     try {
       sourceBufferRef = mediaSource.addSourceBuffer("audio/mpeg");
-      // audio/mpeg 无带内时间戳 用 sequence 模式
+      // MP3 没有可供 MSE 排序的时间戳
       sourceBufferRef.mode = "sequence";
       sourceBufferRef.addEventListener("updateend", () => {
         appendPending = false;
         flushAppendQueue();
         endStreamIfReady();
       });
-      // 补排待追加的帧
+      // 补排 sourceopen 前收到的音频帧
       flushAppendQueue();
       endStreamIfReady();
     } catch {
@@ -162,7 +162,7 @@ function playInternal(messageId: string) {
       if (streamRef !== stream) return;
       streamRef = null;
       taskIdRef = null;
-      // 流异常结束 让已缓冲音频播完
+      // 保留已缓冲音频
       streamEnded = true;
       endStreamIfReady();
       setPlaying(null);

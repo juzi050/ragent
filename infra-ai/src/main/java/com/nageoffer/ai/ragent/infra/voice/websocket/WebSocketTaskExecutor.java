@@ -26,7 +26,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /**
- * 在池化 WebSocket 连接上启动一次独立任务
+ * WebSocket 任务执行器
  */
 public class WebSocketTaskExecutor<P, I, O, C extends VoiceConnection<P, I, O>> implements AutoCloseable {
 

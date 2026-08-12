@@ -21,7 +21,7 @@ import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 
 /**
- * 单个 TTS 供应商的调用入口
+ * TTS 客户端接口
  */
 public interface TtsClient {
 

@@ -79,7 +79,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 在当前空闲连接上启动一次任务
+     * 在当前空闲连接上启动任务
      */
     public final void startTask(String taskId, P param, VoiceStreamCallback<O> callback) {
         if (!state.compareAndSet(VoiceConnectionState.IDLE, VoiceConnectionState.TASK_STARTING)) {
@@ -106,7 +106,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 向当前任务持续发送内容
+     * 向当前任务发送内容
      */
     public final void send(String taskId, I request) {
         requireCurrentTask(taskId, VoiceConnectionState.TASK_RUNNING);
@@ -121,7 +121,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 正常结束当前任务并在收到终态后进入空闲状态
+     * 结束当前任务并等待供应商终态
      */
     public final void finishTask(String taskId) {
         requireCurrentTask(taskId, VoiceConnectionState.TASK_RUNNING);
@@ -142,7 +142,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 取消当前任务并在收到终态后禁用连接复用
+     * 取消当前任务并禁用连接复用
      */
     public final void cancelTask(String taskId) {
         if (state.get() == VoiceConnectionState.IDLE && currentTaskId.get() == null) {
@@ -188,7 +188,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     /**
-     * 物理连接异常关闭时调用
+     * 处理物理连接异常
      */
     private void connectionBroken(Throwable cause) {
         if (markBroken()) {
@@ -301,7 +301,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
      */
     protected final void markTaskFailed(Throwable throwable) {
         if (cancelling.get()) {
-            // 取消响应可能表现为 task-failed 此时不上报业务错误且禁用连接复用
+            // 供应商可能用 task-failed 响应取消请求，此时不再上报业务错误
             markBroken();
             completeTaskFinished(null);
             return;
@@ -316,7 +316,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
 
     private void failConnection(Throwable throwable) {
         if (cancelling.get()) {
-            // 取消过程中连接关闭属于预期 无需上报业务错误
+            // 取消可能导致连接关闭，此时不再上报业务错误
             markBroken();
             completeTaskFinished(null);
             return;
@@ -371,7 +371,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
                 CompletableFuture.anyOf(terminationSignal, packetSignal)
                         .get(remainingMs, TimeUnit.MILLISECONDS);
             } catch (TimeoutException ignored) {
-                // 回到循环使用最新的收帧时间判断，避免超时与新帧到达竞态
+                // 收帧和超时可能同时发生，回到循环后按最新时间重新判断
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw interrupted;
@@ -423,7 +423,7 @@ public abstract class VoiceConnection<P, I, O> implements AutoCloseable {
     }
 
     private void completeTask(String taskId, VoiceConnectionState terminalState) {
-        // 幂等 与取消竞态时后到者静默返回 租约释放由先到者负责
+        // finish 和 cancel 可能并发，只有先完成状态迁移的一方负责释放租约
         if (!Objects.equals(taskId, currentTaskId.get())) {
             return;
         }

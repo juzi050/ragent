@@ -53,7 +53,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
     }
 
     /**
-     * 从 modelId 对应连接池借用一条空闲 WebSocket
+     * 从模型连接池借用空闲 WebSocket
      */
     public WebSocketConnectionLease<C> acquire(ModelTarget target) {
         if (closed.get()) {
@@ -67,7 +67,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
             return new WebSocketConnectionLease<>(pool, connection);
         } catch (NoSuchElementException exception) {
             Throwable cause = exception.getCause();
-            // 无 cause 表示池满 有 cause 表示建连失败
+            // Commons Pool 仅在创建连接失败时保留 cause
             if (cause == null) {
                 throw new ModelClientException("Voice 连接池无可用连接，modelId=" + modelId,
                         ModelClientErrorType.RATE_LIMITED, null, exception);
@@ -93,11 +93,10 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
         poolConfig.setBlockWhenExhausted(false);
         poolConfig.setTestOnBorrow(true);
         poolConfig.setTestOnReturn(true);
-        // 移除空闲超时的连接
         if (config.getIdleTimeoutMs() > 0) {
             poolConfig.setMinEvictableIdleDuration(Duration.ofMillis(config.getIdleTimeoutMs()));
             poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(config.getEvictionIntervalMs()));
-            // 每轮检查全部空闲连接
+            // -1 表示每轮检查全部空闲连接
             poolConfig.setNumTestsPerEvictionRun(-1);
         }
 
@@ -135,7 +134,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
         try {
             connection.close();
         } catch (RuntimeException ignored) {
-            // 销毁时忽略关闭异常以保证连接池收敛
+            // 销毁失败不应阻塞连接池关闭
         }
     }
 

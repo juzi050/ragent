@@ -38,7 +38,7 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.Executor;
 
 /**
- * 阿里云百炼 CosyVoice TTS 适配器
+ * 阿里云百炼 CosyVoice TTS 客户端
  */
 @Component
 public class BaiLianTtsClient extends AbstractWebSocketTtsClient<
@@ -75,7 +75,7 @@ public class BaiLianTtsClient extends AbstractWebSocketTtsClient<
     }
 
     /**
-     * 音色由候选模型配置提供 缺失即失败
+     * 获取候选模型配置的音色
      */
     private String requireVoice(ModelTarget target) {
         String voice = target.candidate().getVoice();
@@ -200,7 +200,7 @@ public class BaiLianTtsClient extends AbstractWebSocketTtsClient<
                 case "task-finished" -> markTaskFinished();
                 case "task-failed" -> failTask(header);
                 default -> {
-                    // 消费 result-generated 等元信息
+                    // 忽略无需处理的元信息事件
                 }
             }
         }

@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.infra.voice.websocket;
 
 /**
- * WebSocket 物理连接及当前任务的状态
+ * WebSocket 连接与任务状态
  */
 public enum VoiceConnectionState {
 

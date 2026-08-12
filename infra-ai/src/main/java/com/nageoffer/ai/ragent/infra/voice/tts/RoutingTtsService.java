@@ -36,7 +36,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 在 TTS 候选模型间执行健康检查、首音频确认和 fallback
+ * TTS 模型路由服务
  */
 @Slf4j
 @Service
@@ -125,7 +125,7 @@ public class RoutingTtsService implements TtsService {
                 cancelQuietly(handle, target);
                 lastError = buildLastErrorAndLog(result, target);
             } finally {
-                // 中性退出不记模型故障并归还半开探测名额
+                // 归还半开探测名额
                 healthStore.releaseHalfOpenPermit(permit);
             }
         }

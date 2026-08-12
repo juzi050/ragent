@@ -148,7 +148,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (state.isStreaming) {
       get().cancelGeneration();
     }
-    // 切会话 停止当前语音播放
+    // 切换会话时停止语音播放
     stopVoicePlayback();
     set({
       currentSessionId: null,
@@ -169,7 +169,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   deleteSession: async (sessionId) => {
     try {
       await deleteSessionRequest(sessionId);
-      // 删除的是当前会话 停止当前语音播放
+      // 删除当前会话时停止语音播放
       if (get().currentSessionId === sessionId) {
         stopVoicePlayback();
       }
@@ -206,7 +206,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().isStreaming) {
       get().cancelGeneration();
     }
-    // 切会话 停止当前语音播放
+    // 切换会话时停止语音播放
     stopVoicePlayback();
     set({
       isLoading: true,

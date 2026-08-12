@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * 消息语音播放控制器 音频帧以 SSE 事件流推送给前端
+ * 消息语音播放控制器
  */
 @RestController
 @RequiredArgsConstructor

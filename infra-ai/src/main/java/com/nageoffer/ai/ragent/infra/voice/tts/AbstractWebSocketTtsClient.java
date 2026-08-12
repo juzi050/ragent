@@ -31,7 +31,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 基于 WebSocket 的 TTS 供应商公共模板
+ * 基于 WebSocket 的 TTS 客户端模板
  */
 public abstract class AbstractWebSocketTtsClient<P, C extends VoiceConnection<P, String, byte[]>>
         implements TtsClient, AutoCloseable {
@@ -58,7 +58,7 @@ public abstract class AbstractWebSocketTtsClient<P, C extends VoiceConnection<P,
                 () -> !audioReceived.get()
         );
         try {
-            // 分块流式发送
+            // 按协议限制分块发送
             for (String chunk : splitChunks(text)) {
                 session.send(chunk);
             }

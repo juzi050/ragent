@@ -20,7 +20,7 @@ package com.nageoffer.ai.ragent.rag.service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * 消息语音播放服务 将已入库的 assistant 消息合成为音频推送给前端
+ * 消息语音播放服务
  */
 public interface VoicePlaybackService {
 
