@@ -43,6 +43,10 @@ import java.util.stream.Collectors;
 @Primary
 public class RoutingTtsService implements TtsService {
 
+    private static final String STREAM_FAILED_MESSAGE = "TTS 流式任务失败";
+    private static final String STREAM_TIMEOUT_MESSAGE = "TTS 首音频超时";
+    private static final String STREAM_NO_CONTENT_MESSAGE = "TTS 未返回有效音频";
+
     private final ModelSelector selector;
     private final ModelHealthStore healthStore;
     private final Map<String, TtsClient> clientsByProvider;
@@ -110,27 +114,16 @@ public class RoutingTtsService implements TtsService {
                     bridge.discard();
                     return handle;
                 }
-                switch (result.getType()) {
-                    case SUCCESS -> {
-                        healthStore.markSuccess(target.id());
-                        bridge.commit();
-                        return handle;
-                    }
-                    case ERROR -> lastError = result.getError() != null
-                            ? result.getError()
-                            : new ModelClientException("TTS 流式任务失败，modelId=" + target.id(),
-                            ModelClientErrorType.SERVER_ERROR, null);
-                    case TIMEOUT -> lastError = new ModelClientException("TTS 首音频超时，modelId=" + target.id(),
-                            ModelClientErrorType.NETWORK_ERROR, null);
-                    case NO_CONTENT -> lastError = new ModelClientException("TTS 未返回有效音频，modelId=" + target.id(),
-                            ModelClientErrorType.INVALID_RESPONSE, null);
+                if (result.isSuccess()) {
+                    healthStore.markSuccess(target.id());
+                    bridge.commit();
+                    return handle;
                 }
 
                 bridge.discard();
                 healthStore.markFailure(target.id());
                 cancelQuietly(handle, target);
-                log.warn("TTS 首音频确认失败，modelId={}，type={}",
-                        target.id(), result.getType(), lastError);
+                lastError = buildLastErrorAndLog(result, target);
             } finally {
                 // 中性退出不记模型故障并归还半开探测名额
                 healthStore.releaseHalfOpenPermit(permit);
@@ -163,6 +156,41 @@ public class RoutingTtsService implements TtsService {
             bridge.commit();
             cancelQuietly(handle, target);
             throw interrupted;
+        }
+    }
+
+    private Throwable buildLastErrorAndLog(BinaryProbeStreamBridge.ProbeResult result, ModelTarget target) {
+        String provider = target.candidate().getProvider();
+        switch (result.getType()) {
+            case ERROR -> {
+                Throwable error = result.getError() != null
+                        ? result.getError()
+                        : new ModelClientException(STREAM_FAILED_MESSAGE, ModelClientErrorType.SERVER_ERROR, null);
+                log.warn("TTS 失败模型: modelId={}，provider={}，原因: 流式任务失败，切换下一个模型",
+                        target.id(), provider, error);
+                return error;
+            }
+            case TIMEOUT -> {
+                ModelClientException timeout = new ModelClientException(
+                        STREAM_TIMEOUT_MESSAGE, ModelClientErrorType.NETWORK_ERROR, null);
+                log.warn("TTS 失败模型: modelId={}，provider={}，原因: 首音频超时，切换下一个模型",
+                        target.id(), provider);
+                return timeout;
+            }
+            case NO_CONTENT -> {
+                ModelClientException noContent = new ModelClientException(
+                        STREAM_NO_CONTENT_MESSAGE, ModelClientErrorType.INVALID_RESPONSE, null);
+                log.warn("TTS 失败模型: modelId={}，provider={}，原因: 未返回有效音频，切换下一个模型",
+                        target.id(), provider);
+                return noContent;
+            }
+            default -> {
+                ModelClientException unknown = new ModelClientException(
+                        STREAM_FAILED_MESSAGE, ModelClientErrorType.SERVER_ERROR, null);
+                log.warn("TTS 失败模型: modelId={}，provider={}，原因: 流式任务失败（未知类型），切换下一个模型",
+                        target.id(), provider);
+                return unknown;
+            }
         }
     }
 

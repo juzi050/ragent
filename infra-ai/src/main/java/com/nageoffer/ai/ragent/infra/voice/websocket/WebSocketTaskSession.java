@@ -83,18 +83,8 @@ public final class WebSocketTaskSession<I> {
     }
 
     public void cancel() {
-        cancel(false);
-    }
-
-    public void cancelAndInvalidate() {
-        cancel(true);
-    }
-
-    private void cancel(boolean invalidateConnection) {
         synchronized (lifecycleLock) {
-            if (invalidateConnection) {
-                lease.invalidate();
-            }
+            lease.invalidate();
             if (lifecycle == Lifecycle.RELEASED || lifecycle == Lifecycle.CANCELLING) {
                 return;
             }
@@ -106,7 +96,6 @@ public final class WebSocketTaskSession<I> {
             connection.cancelTask(taskId);
         } catch (RuntimeException exception) {
             failure = exception;
-            lease.invalidate();
             log.warn("WebSocket 任务取消失败，modelId={}，taskId={}", connection.modelId(), taskId, exception);
         } finally {
             synchronized (lifecycleLock) {

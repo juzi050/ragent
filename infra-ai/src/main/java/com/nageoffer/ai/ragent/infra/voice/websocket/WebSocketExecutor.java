@@ -87,7 +87,6 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
     }
 
     private GenericObjectPool<C> createPool(ModelTarget target) {
-        String modelId = target.id();
         GenericObjectPoolConfig<C> poolConfig = new GenericObjectPoolConfig<>();
         poolConfig.setMaxTotal(config.getMaxTotalPerModel());
         poolConfig.setMaxIdle(config.getMaxIdlePerModel());
@@ -96,7 +95,7 @@ public final class WebSocketExecutor<C extends VoiceConnection<?, ?, ?>> impleme
         poolConfig.setTestOnReturn(true);
         // 移除空闲超时的连接
         if (config.getIdleTimeoutMs() > 0) {
-            poolConfig.setMinEvictableIdleTime(Duration.ofMillis(config.getIdleTimeoutMs()));
+            poolConfig.setMinEvictableIdleDuration(Duration.ofMillis(config.getIdleTimeoutMs()));
             poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(config.getEvictionIntervalMs()));
             // 每轮检查全部空闲连接
             poolConfig.setNumTestsPerEvictionRun(-1);

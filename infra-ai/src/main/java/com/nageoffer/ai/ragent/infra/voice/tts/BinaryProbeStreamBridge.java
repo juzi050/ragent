@@ -48,9 +48,10 @@ final class BinaryProbeStreamBridge implements TtsCallback {
 
     @Override
     public void onAudio(byte[] audio) {
-        if (audio.length > 0) {
-            accept(ProbeResult.success(), false, () -> downstream.onAudio(audio));
+        if (audio.length == 0) {
+            return;
         }
+        accept(ProbeResult.success(), false, () -> downstream.onAudio(audio));
     }
 
     @Override
@@ -75,9 +76,6 @@ final class BinaryProbeStreamBridge implements TtsCallback {
 
     void commit() {
         synchronized (lock) {
-            if (disposition != Disposition.PENDING) {
-                return;
-            }
             disposition = Disposition.COMMITTED;
             buffer.forEach(Runnable::run);
             buffer.clear();
@@ -86,9 +84,6 @@ final class BinaryProbeStreamBridge implements TtsCallback {
 
     void discard() {
         synchronized (lock) {
-            if (disposition != Disposition.PENDING) {
-                return;
-            }
             disposition = Disposition.DISCARDED;
             buffer.clear();
         }
@@ -99,15 +94,13 @@ final class BinaryProbeStreamBridge implements TtsCallback {
             if (terminated || disposition == Disposition.DISCARDED) {
                 return;
             }
-            if (terminal) {
-                terminated = true;
-            }
+            terminated = terminal;
             probe.complete(result);
-            if (disposition == Disposition.COMMITTED) {
-                action.run();
-            } else {
+            if (disposition == Disposition.PENDING) {
                 buffer.add(action);
+                return;
             }
+            action.run();
         }
     }
 

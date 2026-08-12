@@ -67,7 +67,7 @@ public abstract class AbstractWebSocketTtsClient<P, C extends VoiceConnection<P,
                     streamCallback.onError(throwable);
                 }
             });
-            return session::cancelAndInvalidate;
+            return session::cancel;
         } catch (RuntimeException exception) {
             session.cancel();
             throw exception;
