@@ -13,27 +13,19 @@ interface AudioMetaPayload {
 
 // 播放器单例 全局只播一条
 let streamRef: ReturnType<typeof createStreamResponse> | null = null;
+let requestStopRef: (() => void) | null = null;
 let mediaSourceRef: MediaSource | null = null;
 let sourceBufferRef: SourceBuffer | null = null;
 let audioElRef: HTMLAudioElement | null = null;
 let objectUrlRef: string | null = null;
-let taskIdRef: string | null = null;
 let appendQueue: Uint8Array[] = [];
 let appendPending = false;
 
 function stopInternal() {
-  const stream = streamRef;
-  const taskId = taskIdRef;
+  const requestStop = requestStopRef;
   streamRef = null;
-  taskIdRef = null;
-  stream?.cancel();
-  if (taskId) {
-    const token = storage.getToken();
-    fetch(`${STOP_URL}?taskId=${encodeURIComponent(taskId)}`, {
-      method: "POST",
-      headers: token ? { Authorization: token } : undefined
-    }).catch(() => null);
-  }
+  requestStopRef = null;
+  requestStop?.();
   if (audioElRef) {
     audioElRef.pause();
     audioElRef.removeAttribute("src");
@@ -74,10 +66,24 @@ function playInternal(messageId: string) {
 
   let playStarted = false;
   let streamEnded = false;
+  let taskId: string | null = null;
+  let cancelRequested = false;
+  let stopRequested = false;
   const mediaSource = new MediaSource();
   mediaSourceRef = mediaSource;
   const audio = new Audio();
   audioElRef = audio;
+
+  const requestStop = () => {
+    cancelRequested = true;
+    if (!taskId || stopRequested) return;
+    stopRequested = true;
+    const token = storage.getToken();
+    fetch(`${STOP_URL}?taskId=${encodeURIComponent(taskId)}`, {
+      method: "POST",
+      headers: token ? { Authorization: token } : undefined
+    }).catch(() => null);
+  };
 
   const endStreamIfReady = () => {
     if (
@@ -141,11 +147,15 @@ function playInternal(messageId: string) {
 
   const handlers = {
     onEvent(event: string, payload: unknown) {
-      if (streamRef !== stream) return;
       if (event === "audio-meta") {
         const meta = payload as AudioMetaPayload;
-        taskIdRef = meta?.taskId ?? null;
-      } else if (event === "audio") {
+        taskId = meta?.taskId ?? null;
+        if (cancelRequested) {
+          requestStop();
+        }
+      }
+      if (streamRef !== stream) return;
+      if (event === "audio") {
         const frame = payload as { base64?: string };
         if (!frame?.base64) return;
         const bytes = Uint8Array.from(atob(frame.base64), (c) => c.charCodeAt(0));
@@ -153,7 +163,7 @@ function playInternal(messageId: string) {
         flushAppendQueue();
       } else if (event === "done") {
         streamRef = null;
-        taskIdRef = null;
+        requestStopRef = null;
         streamEnded = true;
         endStreamIfReady();
       }
@@ -161,7 +171,7 @@ function playInternal(messageId: string) {
     onError() {
       if (streamRef !== stream) return;
       streamRef = null;
-      taskIdRef = null;
+      requestStopRef = null;
       // 保留已缓冲音频
       streamEnded = true;
       endStreamIfReady();
@@ -179,6 +189,7 @@ function playInternal(messageId: string) {
     handlers
   );
   streamRef = stream;
+  requestStopRef = requestStop;
 
   if (objectUrlRef) {
     URL.revokeObjectURL(objectUrlRef);
